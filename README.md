@@ -25,14 +25,14 @@
 ## Features
 
 - **Hide Fishing Line** — hides the line between your rod and bobber without hiding the bobber.
-- **LouderCatch** — confirms the local ready-to-reel moment and plays a configurable alert at up to 20x volume.
+- **LouderCatch** — plays a configurable alert exactly when a fish is ready to reel, with volume up to 20x.
 - **FishingPartyHelper** — checks Fishing 45, Silver Trophy Hunter, Looting V, Bloodshot belt, and Jawbus eligibility when players join.
-- **Jawbus Finder** — displays a compact ten-second alert when a non-party player dies to Jawbus in your lobby.
+- **Jawbus Finder** — shows a compact alert when a non-party player dies to Jawbus in your lobby.
 - **Looting V Message** — sends one configurable reminder when you spawn a Jawbus.
 
 ## Configuration
 
-Open the compact settings menu with:
+Open the compact fishing menu with any of these commands:
 
 ```text
 /mm
@@ -40,7 +40,7 @@ Open the compact settings menu with:
 /mommy mods
 ```
 
-All MommyMods features live in the **Fishing** category. Left-click a feature to toggle it and right-click to open its options.
+All MommyMods features live in the **Fishing** category. Left-click a feature to toggle it. Right-click a configurable feature to open its options. Settings are saved by the shared config system.
 
 <details>
 <summary><strong>Debug commands</strong></summary>
@@ -60,11 +60,11 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 <details>
 <summary><strong>Detection notes</strong></summary>
 
-- Features activate only on Hypixel.
-- LouderCatch tracks the local hook through casting, landing, waiting, bite confirmation, and reset. Cast and landing signals cannot play the alert.
-- FishingPartyHelper uses the MommyMods readiness service and falls back to visible in-game gear when profile data is unavailable. Unknown values never trigger auto-kick.
-- Jawbus eligibility requires Fishing 45 or higher and Silver Trophy Hunter.
-- Belt output distinguishes no equipped Gillsplash/Finwave belt from a relevant belt without Bloodshot.
+- Features activate only on `hypixel.net` and its subdomains.
+- LouderCatch follows the local hook lifecycle and confirms the associated `!!!` fishing timer marker before alerting.
+- FishingPartyHelper uses a narrow readiness service and falls back to visible in-game gear when profile data is unavailable. Unknown values are never treated as failures for auto-kick.
+- A player can Jawbus only with Fishing 45 or higher and Silver Trophy Hunter.
+- The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
 - Jawbus alerts and chat reminders use narrow Hypixel messages with per-event cooldowns to avoid duplicates.
 
 </details>
@@ -87,7 +87,7 @@ The distributable JAR is written to `build/libs/`.
 
 ## Contributions
 
-Issues and pull requests are welcome. Keep changes focused and test against Minecraft 26.1.2.
+Issues and pull requests are welcome. Keep changes focused, test against Minecraft 26.1.2, and include a clear description of user-facing behavior.
 
 ## License
 
