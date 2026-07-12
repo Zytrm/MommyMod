@@ -1,19 +1,12 @@
-package com.github.noamm9.mommymods.features.impl.fishing
+package com.zytrm.mommymods.feature
 
-import com.github.noamm9.event.impl.ChatMessageEvent
-import com.github.noamm9.event.impl.RenderOverlayEvent
-import com.github.noamm9.features.Feature
-import com.github.noamm9.mommymods.core.GameContext
-import com.github.noamm9.ui.clickgui.components.impl.ToggleSetting
-import com.github.noamm9.utils.PartyUtils
+import com.zytrm.mommymods.config.ModConfig
+import com.zytrm.mommymods.core.GameContext
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import kotlin.math.roundToInt
 
-object JawbusFinder : Feature(
-    description = "Alerts when a non-party player dies to Jawbus in your lobby.",
-    toggled = true,
-) {
+object JawbusFinder {
     private val deathMessage = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) was killed by (?:Lord )?Jawbus\\.?$")
     private const val DISPLAY_MILLIS = 10_000L
     private const val COOLDOWN_MILLIS = 45_000L
@@ -22,25 +15,11 @@ object JawbusFinder : Feature(
     @Volatile private var nextAllowedAt = 0L
     @Volatile private var playerName = ""
 
-    private val deathMessageDetection by ToggleSetting("Death Message Detection", true)
-        .section("Detection")
-
-    override fun init() {
-        register<ChatMessageEvent> { onMessage(event.unformattedText) }
-        register<RenderOverlayEvent> { render(event.context) }
-    }
-
-    override fun onDisable() {
-        super.onDisable()
-        alertUntil = 0L
-    }
-
-    private fun onMessage(message: String) {
-        if (!deathMessageDetection.value || !GameContext.isOnHypixel()) return
+    fun onMessage(message: String) {
+        val settings = ModConfig.values
+        if (!settings.jawbusFinder || !settings.deathMessageDetection || !GameContext.isOnHypixel()) return
         val name = deathMessage.matchEntire(message)?.groupValues?.get(1) ?: return
-        if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true) ||
-            PartyUtils.members.any { it.equals(name, ignoreCase = true) }
-        ) return
+        if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true) || PartyState.isMember(name)) return
 
         val now = System.currentTimeMillis()
         if (now < nextAllowedAt) return
@@ -49,7 +28,8 @@ object JawbusFinder : Feature(
         nextAllowedAt = now + COOLDOWN_MILLIS
     }
 
-    private fun render(graphics: GuiGraphicsExtractor) {
+    @JvmStatic
+    fun render(graphics: GuiGraphicsExtractor) {
         val now = System.currentTimeMillis()
         val remaining = alertUntil - now
         if (remaining <= 0L) return

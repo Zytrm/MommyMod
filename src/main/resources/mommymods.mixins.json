@@ -1,19 +1,15 @@
 {
   "required": true,
-  "minVersion": "0.8",
-  "package": "com.github.noamm9.mommymods.mixins",
+  "package": "com.zytrm.mommymods.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": [
-    "FishingCategoryMixin"
-  ],
   "client": [
+    "ClientPacketListenerMixin",
     "FishingHookAccessor",
-    "FishingHookRendererMixin"
+    "FishingHookRendererMixin",
+    "GuiMixin",
+    "MultiPlayerGameModeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "overwrites": {
-    "requireAnnotations": true
   }
 }

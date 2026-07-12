@@ -18,9 +18,9 @@
 
 1. Install [Fabric for Minecraft 26.1.2](https://fabricmc.net/use/installer/).
 2. Install [Fabric API](https://modrinth.com/mod/fabric-api/versions?g=26.1.2) and [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin).
-3. Install [NoammAddons](https://github.com/Noamm9/NoammAddons) 1.2.2 or newer. MommyMods uses its feature, event, and settings framework.
-4. Download the latest MommyMods JAR from [Releases](https://github.com/Zytrm/MommyMod/releases) or a successful [Actions build](https://github.com/Zytrm/MommyMod/actions/workflows/build.yml).
-5. Place the required JARs in `.minecraft/mods`, launch Minecraft, and type `/mm`.
+3. Download the latest MommyMods `.jar` from [Releases](https://github.com/Zytrm/MommyMod/releases).
+4. Place all three `.jar` files in your `.minecraft/mods` folder.
+5. Launch Minecraft with the Fabric profile and type `/mm` in chat.
 
 ## Features
 
@@ -40,7 +40,7 @@ Open the compact fishing menu with any of these commands:
 /mommy mods
 ```
 
-All MommyMods features live in the **Fishing** category. Left-click a feature to toggle it. Right-click a configurable feature to open its options. Settings are saved by the shared config system.
+Left-click a feature to toggle it. Right-click a configurable feature to open its options. Settings are saved to `config/mommymods.json`.
 
 <details>
 <summary><strong>Debug commands</strong></summary>

@@ -1,7 +1,7 @@
-package com.github.noamm9.mommymods.mixins;
+package com.zytrm.mommymods.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.github.noamm9.mommymods.features.impl.fishing.HideFishingLine;
+import com.zytrm.mommymods.config.ModConfig;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.FishingHookRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -25,7 +25,7 @@ public abstract class FishingHookRendererMixin {
         RenderType renderType,
         SubmitNodeCollector.CustomGeometryRenderer renderer
     ) {
-        if (!HideFishingLine.INSTANCE.enabled) {
+        if (!ModConfig.INSTANCE.getValues().getHideFishingLine()) {
             collector.submitCustomGeometry(poseStack, renderType, renderer);
         }
     }

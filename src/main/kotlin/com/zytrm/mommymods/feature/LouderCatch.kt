@@ -1,15 +1,9 @@
-package com.github.noamm9.mommymods.features.impl.fishing
+package com.zytrm.mommymods.feature
 
-import com.github.noamm9.event.impl.MainThreadPacketReceivedEvent
-import com.github.noamm9.event.impl.PlayerInteractEvent
-import com.github.noamm9.event.impl.TickEvent
-import com.github.noamm9.features.Feature
-import com.github.noamm9.mommymods.MommyMods
-import com.github.noamm9.mommymods.core.GameContext
-import com.github.noamm9.mommymods.mixins.FishingHookAccessor
-import com.github.noamm9.ui.clickgui.components.impl.ButtonSetting
-import com.github.noamm9.ui.clickgui.components.impl.DropdownSetting
-import com.github.noamm9.ui.clickgui.components.impl.SliderSetting
+import com.zytrm.mommymods.MommyMods
+import com.zytrm.mommymods.config.ModConfig
+import com.zytrm.mommymods.core.GameContext
+import com.zytrm.mommymods.mixin.FishingHookAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
@@ -18,8 +12,6 @@ import net.minecraft.client.resources.sounds.SoundInstance
 import net.minecraft.client.sounds.SoundEngine
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket
-import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket
-import net.minecraft.network.protocol.game.ClientboundSoundPacket
 import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
@@ -33,10 +25,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
 
-object LouderCatch : Feature(
-    description = "Plays a configurable alert when your fish is ready to reel.",
-    toggled = true,
-) {
+object LouderCatch {
     data class Choice(
         val label: String,
         val identifier: Identifier,
@@ -70,17 +59,6 @@ object LouderCatch : Feature(
         Choice("Thunder", alertId("thunder"), SoundEvents.TRIDENT_THUNDER.value()),
         Choice("Button", alertId("button"), SoundEvents.UI_BUTTON_CLICK.value()),
     )
-
-    private val catchSound by DropdownSetting("Sound", 0, choices.map(Choice::label))
-        .section("Catch Alert")
-    private val catchVolume by SliderSetting("Volume", 4.0f, 0.1f, 20.0f, 0.1f)
-        .section("Catch Alert")
-    private val catchPitch by SliderSetting("Pitch", 1.0f, 0.5f, 2.0f, 0.1f)
-        .section("Catch Alert")
-
-    @Suppress("unused")
-    private val testSound by ButtonSetting("Test Sound") { playConfigured() }
-        .section("Catch Alert")
 
     private val hypixelCatchId = SoundEvents.EXPERIENCE_ORB_PICKUP.location
     private val vanillaBiteId = SoundEvents.FISHING_BOBBER_SPLASH.location
@@ -116,38 +94,6 @@ object LouderCatch : Feature(
     private var timerMarkerUuid: UUID? = null
     private var readyMarkerUuid: UUID? = null
 
-    override fun init() {
-        register<TickEvent.End> { onTick(mc) }
-        register<MainThreadPacketReceivedEvent.Pre> {
-            when (val packet = event.packet) {
-                is ClientboundSoundPacket -> {
-                    if (onSoundPacket(
-                            packet.sound.value().location,
-                            packet.volume,
-                            packet.x,
-                            packet.y,
-                            packet.z,
-                        )
-                    ) event.cancel()
-                }
-                is ClientboundSoundEntityPacket -> {
-                    if (onSoundEntityPacket(packet.sound.value().location, packet.volume, packet.id)) {
-                        event.cancel()
-                    }
-                }
-                is ClientboundLevelParticlesPacket -> onParticlePacket(packet)
-            }
-        }
-        register<PlayerInteractEvent.RIGHT_CLICK.AIR> { event.item?.let(::onFishingRodUse) }
-        register<PlayerInteractEvent.RIGHT_CLICK.BLOCK> { event.item?.let(::onFishingRodUse) }
-        register<PlayerInteractEvent.RIGHT_CLICK.ENTITY> { event.item?.let(::onFishingRodUse) }
-    }
-
-    override fun onDisable() {
-        super.onDisable()
-        reset("feature disabled")
-    }
-
     fun onTick(minecraft: Minecraft) {
         val level = minecraft.level
         if (level !== trackedLevel) {
@@ -155,6 +101,10 @@ object LouderCatch : Feature(
             trackedLevel = level
         }
 
+        if (!ModConfig.values.louderCatch) {
+            reset("feature disabled")
+            return
+        }
         if (!GameContext.isOnHypixel()) {
             reset("left Hypixel")
             return
@@ -435,7 +385,7 @@ object LouderCatch : Feature(
     }
 
     private fun signalHook(): FishingHook? {
-        if (!enabled || !GameContext.isOnHypixel()) return null
+        if (!ModConfig.values.louderCatch || !GameContext.isOnHypixel()) return null
         val minecraft = Minecraft.getInstance()
         val level = minecraft.level ?: return null
         val player = minecraft.player ?: return null
@@ -597,13 +547,16 @@ object LouderCatch : Feature(
 
     private fun playConfiguredOnClientThread() {
         val minecraft = Minecraft.getInstance()
-        val choice = choices.getOrElse(catchSound.value) { choices.first() }
+        val settings = ModConfig.values
+        val configured = choices.firstOrNull { it.label == settings.catchSound }
+        val choice = configured ?: choices.first()
+        if (configured == null) trace("playback", "invalid_selection=${settings.catchSound} fallback=${choice.label}")
 
         val soundManager = minecraft.soundManager
         val aliasAvailable = soundManager.getSoundEvent(choice.identifier) != null
         val identifier = if (aliasAvailable) choice.identifier else choice.fallback.location
-        val volume = catchVolume.value.coerceIn(0.1f, 20.0f)
-        val pitch = catchPitch.value.coerceIn(0.5f, 2.0f)
+        val volume = settings.catchVolume.coerceIn(0.1f, 20.0f)
+        val pitch = settings.catchPitch.coerceIn(0.5f, 2.0f)
 
         var playedIdentifier = identifier
         var results = playVoices(playedIdentifier, volume, pitch)

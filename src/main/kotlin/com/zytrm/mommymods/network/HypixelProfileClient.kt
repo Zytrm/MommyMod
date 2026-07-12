@@ -1,8 +1,8 @@
-package com.github.noamm9.mommymods.network
+package com.zytrm.mommymods.network
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.github.noamm9.mommymods.model.FishingReadiness
+import com.zytrm.mommymods.model.FishingReadiness
 import net.minecraft.client.Minecraft
 import java.net.URI
 import java.net.URLEncoder
