@@ -1,13 +1,14 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.github.noamm9.untitled.mixins",
+  "package": "com.github.noamm9.mommymods.mixins",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
-    "MixinCategoryType"
+    "FishingCategoryMixin"
   ],
   "client": [
-    "MixinMinecraft"
+    "FishingHookAccessor",
+    "FishingHookRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

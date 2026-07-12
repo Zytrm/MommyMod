@@ -1,29 +1,35 @@
 {
   "schemaVersion": 1,
-  "id": "untitled",
+  "id": "mommymods",
   "version": "${version}",
-  "name": "untitled",
-  "description": "",
-  "authors": [],
-  "contact": {},
-  "license": "All-Rights-Reserved",
-  "icon": "assets/untitled/icon.png",
+  "name": "MommyMods",
+  "description": "Focused fishing utilities for Hypixel SkyBlock.",
+  "authors": ["Zytrm"],
+  "contact": {
+    "homepage": "https://github.com/Zytrm/MommyMod",
+    "sources": "https://github.com/Zytrm/MommyMod",
+    "issues": "https://github.com/Zytrm/MommyMod/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/mommymods/icon.png",
   "environment": "client",
   "entrypoints": {
     "client": [
       {
-        "value": "com.github.noamm9.untitled.Untitled",
+        "value": "com.github.noamm9.mommymods.MommyMods",
         "adapter": "kotlin"
       }
     ]
   },
   "mixins": [
-    "untitled.mixins.json"
+    "mommymods.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-language-kotlin": ">=${kotlin_loader_version}",
     "fabric-api": "*",
-    "minecraft": "${minecraft_version}"
+    "minecraft": "${minecraft_version}",
+    "java": ">=25",
+    "noammaddons": ">=1.2.2"
   }
 }

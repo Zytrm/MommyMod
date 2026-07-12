@@ -1,6 +1,6 @@
-package com.github.noamm9.untitled.mixins;
+package com.github.noamm9.mommymods.mixins;
 
-import com.github.noamm9.NoammAddons;
+import com.github.noamm9.mommymods.MommyMods;
 import com.github.noamm9.ui.clickgui.enums.CategoryType;
 import kotlin.enums.EnumEntriesKt;
 import org.spongepowered.asm.mixin.Final;
@@ -16,51 +16,39 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-/**
-    Mixins to add a category to the config gui
-    String enumName = "UNTITLED";
- */
 @Mixin(CategoryType.class)
-public class MixinCategoryType {
-
+public class FishingCategoryMixin {
     @Shadow @Final @Mutable
     private static CategoryType[] $VALUES;
 
     @Inject(method = "<clinit>", at = @At("TAIL"))
-    private static void addCustomCategory(CallbackInfo ci) {
+    private static void mommymods$addFishingCategory(CallbackInfo ci) {
         try {
             Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
             unsafeField.setAccessible(true);
             Unsafe unsafe = (Unsafe) unsafeField.get(null);
 
-            String enumName = "UNTITLED";
-            ArrayList<CategoryType> valuesList = new ArrayList<>(Arrays.asList($VALUES));
-            int newOrdinal = valuesList.size();
-
-            CategoryType newCategory = (CategoryType) unsafe.allocateInstance(CategoryType.class);
+            ArrayList<CategoryType> categories = new ArrayList<>(Arrays.asList($VALUES));
+            CategoryType fishing = (CategoryType) unsafe.allocateInstance(CategoryType.class);
 
             Field nameField = Enum.class.getDeclaredField("name");
             Field ordinalField = Enum.class.getDeclaredField("ordinal");
-
-            long nameOffset = unsafe.objectFieldOffset(nameField);
             long ordinalOffset = unsafe.objectFieldOffset(ordinalField);
+            unsafe.putObject(fishing, unsafe.objectFieldOffset(nameField), "FISHING");
+            unsafe.putInt(fishing, ordinalOffset, 0);
 
-            unsafe.putObject(newCategory, nameOffset, enumName);
-            unsafe.putInt(newCategory, ordinalOffset, newOrdinal);
-
-            valuesList.add(newCategory);
-            CategoryType[] newValuesArray = valuesList.toArray(new CategoryType[0]);
-
-            $VALUES = newValuesArray;
+            for (int index = 0; index < categories.size(); index++) {
+                unsafe.putInt(categories.get(index), ordinalOffset, index + 1);
+            }
+            categories.add(0, fishing);
+            $VALUES = categories.toArray(new CategoryType[0]);
 
             Field entriesField = CategoryType.class.getDeclaredField("$ENTRIES");
             Object base = unsafe.staticFieldBase(entriesField);
             long offset = unsafe.staticFieldOffset(entriesField);
-            var newEntries = EnumEntriesKt.enumEntries(newValuesArray);
-            unsafe.putObject(base, offset, newEntries);
-        } catch (Exception e) {
-            NoammAddons.logger.error("Error while adding custom category type", e);
-            e.printStackTrace();
+            unsafe.putObject(base, offset, EnumEntriesKt.enumEntries($VALUES));
+        } catch (ReflectiveOperationException exception) {
+            MommyMods.logger.error("Could not register the Fishing settings category", exception);
         }
     }
 }
