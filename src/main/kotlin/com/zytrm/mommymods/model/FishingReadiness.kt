@@ -1,4 +1,4 @@
-package com.github.noamm9.mommymods.model
+package com.zytrm.mommymods.model
 
 data class FishingReadiness(
     val name: String,

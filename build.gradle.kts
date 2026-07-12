@@ -22,7 +22,8 @@ java {
 
 repositories {
     maven { url = uri("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1") }
-    maven { url = uri("https://jitpack.io") }
+    mavenCentral()
+    maven { url = uri("https://maven.terraformersmc.com/releases/") }
 }
 
 dependencies {
@@ -34,9 +35,7 @@ dependencies {
 
     runtimeOnly("me.djtheredstoner:DevAuth-fabric:1.2.2")
 
-    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-
-    implementation("com.github.Noamm9:NoammAddons:${project.property("noammaddons_version")}:${project.property("noammaddons_type")}")
+    compileOnly("com.terraformersmc:modmenu:${project.property("modmenu_version")}")
 }
 
 tasks.processResources {

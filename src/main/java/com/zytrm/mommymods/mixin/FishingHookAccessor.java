@@ -1,4 +1,4 @@
-package com.github.noamm9.mommymods.mixins;
+package com.zytrm.mommymods.mixin;
 
 import net.minecraft.world.entity.projectile.FishingHook;
 import org.spongepowered.asm.mixin.Mixin;

@@ -1,16 +1,10 @@
-package com.github.noamm9.mommymods.features.impl.fishing
+package com.zytrm.mommymods.feature
 
-import com.github.noamm9.event.impl.ChatMessageEvent
-import com.github.noamm9.event.impl.TickEvent
-import com.github.noamm9.features.Feature
-import com.github.noamm9.mommymods.core.Chat
-import com.github.noamm9.mommymods.core.GameContext
-import com.github.noamm9.mommymods.model.FishingReadiness
-import com.github.noamm9.mommymods.network.HypixelProfileClient
-import com.github.noamm9.ui.clickgui.components.impl.MultiCheckboxSetting
-import com.github.noamm9.ui.clickgui.components.impl.ToggleSetting
-import com.github.noamm9.utils.ChatUtils
-import com.github.noamm9.utils.PartyUtils
+import com.zytrm.mommymods.config.ModConfig
+import com.zytrm.mommymods.core.Chat
+import com.zytrm.mommymods.core.GameContext
+import com.zytrm.mommymods.model.FishingReadiness
+import com.zytrm.mommymods.network.HypixelProfileClient
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
@@ -23,10 +17,7 @@ import net.minecraft.world.item.TooltipFlag
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
-object FishingPartyHelper : Feature(
-    description = "Checks fishing readiness when players join your party.",
-    toggled = true,
-) {
+object FishingPartyHelper {
     private const val SCAN_TICKS = 160L
     private val validPlayerName = Regex("^[A-Za-z0-9_]{1,16}$")
     private val joinedParty = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) joined the party\\.$")
@@ -34,17 +25,6 @@ object FishingPartyHelper : Feature(
     private val pendingApi = ConcurrentHashMap.newKeySet<String>()
     private val pendingScans = ConcurrentHashMap<String, PendingScan>()
     private var clientTick = 0L
-
-    private val autoKick by ToggleSetting("Auto Kick", false)
-        .section("Party Actions")
-
-    private val kickConditions by MultiCheckboxSetting(
-        "Kick Conditions",
-        linkedMapOf(
-            "No Looting V" to true,
-            "Can't Jawbus" to true,
-        ),
-    ).section("Party Actions").showIf { autoKick.value }
 
     private data class PendingScan(
         val name: String,
@@ -54,28 +34,17 @@ object FishingPartyHelper : Feature(
         var hasLootingV: Boolean? = null,
     )
 
-    override fun init() {
-        register<ChatMessageEvent> { onMessage(event.unformattedText) }
-        register<TickEvent.End> { onTick(mc) }
-    }
-
-    override fun onDisable() {
-        super.onDisable()
-        pendingApi.clear()
-        pendingScans.clear()
-    }
-
-    private fun onMessage(message: String) {
-        if (!GameContext.isOnHypixel()) return
+    fun onMessage(message: String) {
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel()) return
         val name = joinedParty.matchEntire(message)?.groupValues?.get(1) ?: return
         if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true)) return
 
         inspectProfile(name)
     }
 
-    private fun onTick(minecraft: Minecraft) {
+    fun onTick(minecraft: Minecraft) {
         clientTick++
-        if (!GameContext.isOnHypixel()) {
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel()) {
             pendingScans.clear()
             return
         }
@@ -143,7 +112,7 @@ object FishingPartyHelper : Feature(
 
     fun debugStatus() {
         Chat.info(
-            "Party helper status: enabled=$enabled, " +
+            "Party helper status: enabled=${ModConfig.values.fishingPartyHelper}, " +
                 "hypixel=${GameContext.isOnHypixel()}, pendingProfiles=${pendingApi.size}, " +
                 "pendingGearScans=${pendingScans.size}, ${HypixelProfileClient.statusSummary()}.",
         )
@@ -293,19 +262,17 @@ object FishingPartyHelper : Feature(
     }
 
     private fun maybeKick(data: FishingReadiness) {
-        if (!autoKick.value ||
-            PartyUtils.partyLeader?.equals(Minecraft.getInstance().user.name, ignoreCase = true) != true ||
-            PartyUtils.members.none { it.equals(data.name, ignoreCase = true) }
-        ) return
+        val settings = ModConfig.values
+        if (!settings.autoKick || !PartyState.isLocalLeader() || !PartyState.isMember(data.name)) return
 
         val reasons = buildList {
-            if (kickConditions.value["No Looting V"] == true && data.hasLootingV == false) add("No Looting V")
-            if (kickConditions.value["Can't Jawbus"] == true && data.canJawbus == false) add("Can't Jawbus")
+            if (settings.kickNoLootingV && data.hasLootingV == false) add("No Looting V")
+            if (settings.kickCantJawbus && data.canJawbus == false) add("Can't Jawbus")
         }
         if (reasons.isEmpty()) return
 
         Chat.info("Auto-kicking ${data.name}: ${reasons.joinToString(", ")}")
-        ChatUtils.sendCommand("party kick ${data.name}")
+        Minecraft.getInstance().connection?.sendCommand("party kick ${data.name}")
     }
 
     private enum class CheckState { PASS, FAIL, UNKNOWN }
