@@ -11,19 +11,16 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.AbstractClientPlayer
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.EquipmentSlot
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.TooltipFlag
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 object FishingPartyHelper {
     private const val SCAN_TICKS = 160L
-    private const val HUD_REFRESH_TICKS = 200L
+    private const val HUD_REFRESH_TICKS = 100L
     private const val HUD_STALE_MILLIS = 60 * 1000L
     private val validPlayerName = Regex("^[A-Za-z0-9_]{1,16}$")
     private val joinedParty = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) joined the party\\.$")
-    private val lootingV = Regex("\\bLooting\\s+V\\b", RegexOption.IGNORE_CASE)
     private val pendingApi = ConcurrentHashMap.newKeySet<String>()
     private val pendingScans = ConcurrentHashMap<String, PendingScan>()
     private val readinessCache = ConcurrentHashMap<String, CachedReadiness>()
@@ -39,15 +36,14 @@ object FishingPartyHelper {
     private data class CachedReadiness(
         val data: FishingReadiness,
         val updatedAt: Long,
-        val hotbarScoped: Boolean,
     )
 
     private data class PendingScan(
         val name: String,
         val startedAt: Long,
         var observedInWorld: Boolean = false,
-        var lootingWeapon: String? = null,
-        var hasLootingV: Boolean? = null,
+        val validWeapons: MutableSet<String> = linkedSetOf(),
+        val lootingVWeapons: MutableSet<String> = linkedSetOf(),
     )
 
     fun onMessage(message: String) {
@@ -75,24 +71,24 @@ object FishingPartyHelper {
             if (clientTick - scan.startedAt >= SCAN_TICKS) {
                 pendingScans.remove(key)
                 val readiness = scan.toReadiness()
-                cache(readiness, hotbarScoped = false)
+                cache(readiness)
                 show(readiness)
                 maybeKick(readiness)
             }
         }
     }
 
-    private fun inspectProfile(name: String, announce: Boolean) {
+    private fun inspectProfile(name: String, announce: Boolean, force: Boolean = false) {
         val key = name.lowercase()
         if (!pendingApi.add(key)) return
-        HypixelProfileClient.inspect(name, hotbarOnly = !announce).whenComplete { readiness, throwable ->
+        HypixelProfileClient.inspect(name, bypassCache = force).whenComplete { readiness, throwable ->
             pendingApi.remove(key)
             Minecraft.getInstance().execute {
                 if (throwable != null) {
                     if (announce) startInGameScan(name)
                 } else {
-                    val resolved = withLocalHotbar(readiness)
-                    cache(resolved, hotbarScoped = !announce)
+                    val resolved = withLocalInventory(readiness)
+                    cache(resolved)
                     if (announce) {
                         show(resolved)
                         maybeKick(resolved)
@@ -102,13 +98,13 @@ object FishingPartyHelper {
         }
     }
 
-    fun refreshPartyReadiness() {
+    fun refreshPartyReadiness(force: Boolean = false) {
         if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel() || !PartyState.isInParty()) return
         val now = System.currentTimeMillis()
         PartyState.memberNames().forEach { name ->
             val cached = readinessCache[name.lowercase()]
-            if (cached == null || !cached.hotbarScoped || now - cached.updatedAt >= HUD_STALE_MILLIS) {
-                inspectProfile(name, announce = false)
+            if (force || cached == null || now - cached.updatedAt >= HUD_STALE_MILLIS) {
+                inspectProfile(name, announce = false, force = force)
             }
         }
     }
@@ -117,7 +113,7 @@ object FishingPartyHelper {
         if (!ModConfig.values.fishingPartyHelper || !PartyState.isInParty()) return emptyList()
         val minecraft = Minecraft.getInstance()
         val localName = minecraft.user.name
-        val localWeapons = LootingVScanner.localHotbar(minecraft)
+        val localInventory = LootingVScanner.localInventory(minecraft)
         return PartyState.memberNames()
             .sortedWith(compareBy<String> { !it.equals(localName, ignoreCase = true) }.thenBy { it.lowercase() })
             .map { name ->
@@ -125,7 +121,7 @@ object FishingPartyHelper {
                 HudStatus(
                     name = name,
                     canJawbus = readiness?.canJawbus,
-                    lootingV = if (name.equals(localName, ignoreCase = true)) localWeapons?.isNotEmpty() else readiness?.hasLootingV,
+                    lootingV = if (name.equals(localName, ignoreCase = true)) localInventory?.hasLootingV else readiness?.hasLootingV,
                     bloodshot = readiness?.bloodshotBelt,
                 )
             }
@@ -212,16 +208,9 @@ object FishingPartyHelper {
     ) {
         scan.observedInWorld = true
         visibleEquipment(player).filterNot { it.isEmpty }.forEach { stack ->
-            val text = itemText(minecraft, level, stack)
-            val weapon = when {
-                text.contains("hyperion", ignoreCase = true) -> "Hyperion"
-                text.contains("flaming flay", ignoreCase = true) -> "Flaming Flay"
-                else -> null
-            }
-            if (weapon != null) {
-                val hasEnchant = lootingV.containsMatchIn(text)
-                scan.lootingWeapon = weapon
-                scan.hasLootingV = scan.hasLootingV == true || hasEnchant
+            LootingVScanner.classifyStack(minecraft, level, stack)?.let { (weapon, hasLootingV) ->
+                scan.validWeapons += weapon
+                if (hasLootingV) scan.lootingVWeapons += weapon
             }
         }
     }
@@ -235,41 +224,38 @@ object FishingPartyHelper {
         player.getItemBySlot(EquipmentSlot.FEET),
     )
 
-    private fun itemText(minecraft: Minecraft, level: ClientLevel, stack: ItemStack): String = buildString {
-        appendLine(stack.hoverName.string)
-        runCatching {
-            stack.getTooltipLines(Item.TooltipContext.of(level), minecraft.player, TooltipFlag.NORMAL)
-        }.getOrDefault(emptyList()).forEach { appendLine(it.string) }
-    }
-
-    private fun PendingScan.toReadiness() = FishingReadiness(
+    private fun PendingScan.toReadiness(): FishingReadiness {
+        val hasSupportedWeapon = validWeapons.isNotEmpty()
+        val enchantedWeapons = lootingVWeapons.toList()
+        return FishingReadiness(
         name = name,
         profileName = "In-game",
         fishingLevel = null,
         silverTrophyHunter = null,
         inventoryAvailable = observedInWorld,
-        lootingWeapon = lootingWeapon,
-        lootingWeapons = if (hasLootingV == true) listOfNotNull(lootingWeapon) else emptyList(),
-        lootingV = hasLootingV,
+        lootingWeapon = enchantedWeapons.firstOrNull() ?: validWeapons.firstOrNull(),
+        lootingWeapons = enchantedWeapons,
+        lootingV = if (hasSupportedWeapon) enchantedWeapons.isNotEmpty() else null,
         beltCheckAvailable = false,
         fishingBelt = null,
         bloodshotBelt = null,
         observedInWorld = observedInWorld,
     )
+    }
 
-    private fun withLocalHotbar(data: FishingReadiness): FishingReadiness {
+    private fun withLocalInventory(data: FishingReadiness): FishingReadiness {
         val minecraft = Minecraft.getInstance()
         if (!data.name.equals(minecraft.user.name, ignoreCase = true)) return data
-        val weapons = LootingVScanner.localHotbar(minecraft) ?: return data
+        val inventory = LootingVScanner.localInventory(minecraft) ?: return data
         return data.copy(
-            lootingWeapon = weapons.firstOrNull(),
-            lootingWeapons = weapons,
-            lootingV = weapons.isNotEmpty(),
+            lootingWeapon = inventory.lootingVWeapons.firstOrNull() ?: inventory.validWeapons.firstOrNull(),
+            lootingWeapons = inventory.lootingVWeapons,
+            lootingV = inventory.hasLootingV,
         )
     }
 
-    private fun cache(data: FishingReadiness, hotbarScoped: Boolean) {
-        readinessCache[data.name.lowercase()] = CachedReadiness(data, System.currentTimeMillis(), hotbarScoped)
+    private fun cache(data: FishingReadiness) {
+        readinessCache[data.name.lowercase()] = CachedReadiness(data, System.currentTimeMillis())
     }
 
     private data class SummaryValue(val label: String, val value: String, val state: CheckState)
@@ -292,7 +278,7 @@ object FishingPartyHelper {
         )
 
         val looting = when {
-            data.hasLootingV == true -> "Yes (${data.lootingWeapon ?: "weapon"})"
+            data.hasLootingV == true -> "Yes (${LootingVScanner.readinessWeapons(data).orEmpty().joinToString(" & ")})"
             data.hasLootingV == false && data.lootingWeapon != null -> "No (${data.lootingWeapon})"
             data.hasLootingV == false -> "No weapon"
             data.observedInWorld -> "Not held"

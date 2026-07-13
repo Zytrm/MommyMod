@@ -16,7 +16,6 @@ internal fun isInstallationId(value: String): Boolean = runCatching {
 }.getOrDefault(false)
 
 internal fun applyMissingSettingDefaults(values: MommySettings, existingKeys: Set<String>) {
-    if ("bobberVisibility" !in existingKeys) values.bobberVisibility = "Line Only"
     if ("partyReadinessHud" !in existingKeys) values.partyReadinessHud = true
     if ("jawbusFinisherEnabled" !in existingKeys) values.jawbusFinisherEnabled = true
     if ("jawbusFinisherHealth" !in existingKeys) values.jawbusFinisherHealth = 20
@@ -37,7 +36,6 @@ data class PartyCommandSetting(
 data class MommySettings(
     var installationId: String = "",
     var hideFishingLine: Boolean = true,
-    var bobberVisibility: String = "Line Only",
     var louderCatch: Boolean = true,
     var catchSound: String = "Experience",
     var catchVolume: Float = 4.0f,
@@ -94,9 +92,6 @@ object ModConfig {
             .getOrElse { MommySettings() }
         existingKeys?.let { applyMissingSettingDefaults(values, it) }
         if (!isInstallationId(values.installationId)) values.installationId = UUID.randomUUID().toString()
-        if (values.bobberVisibility !in setOf("Line Only", "Hide Others", "Hide All")) {
-            values.bobberVisibility = "Line Only"
-        }
         if (values.jawbusFinisherMessage.isNullOrBlank()) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
         values.jawbusFinisherHealth = values.jawbusFinisherHealth.coerceIn(5, 50)
         values.lastJawbusHookedAt = values.lastJawbusHookedAt.coerceAtLeast(0L)
