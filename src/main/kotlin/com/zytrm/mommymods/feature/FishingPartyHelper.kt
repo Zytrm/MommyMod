@@ -19,12 +19,28 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 object FishingPartyHelper {
     private const val SCAN_TICKS = 160L
+    private const val HUD_REFRESH_TICKS = 200L
+    private const val HUD_STALE_MILLIS = 60 * 1000L
     private val validPlayerName = Regex("^[A-Za-z0-9_]{1,16}$")
     private val joinedParty = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) joined the party\\.$")
     private val lootingV = Regex("\\bLooting\\s+V\\b", RegexOption.IGNORE_CASE)
     private val pendingApi = ConcurrentHashMap.newKeySet<String>()
     private val pendingScans = ConcurrentHashMap<String, PendingScan>()
+    private val readinessCache = ConcurrentHashMap<String, CachedReadiness>()
     private var clientTick = 0L
+
+    data class HudStatus(
+        val name: String,
+        val canJawbus: Boolean?,
+        val lootingV: Boolean?,
+        val bloodshot: Boolean?,
+    )
+
+    private data class CachedReadiness(
+        val data: FishingReadiness,
+        val updatedAt: Long,
+        val hotbarScoped: Boolean,
+    )
 
     private data class PendingScan(
         val name: String,
@@ -39,7 +55,7 @@ object FishingPartyHelper {
         val name = joinedParty.matchEntire(message)?.groupValues?.get(1) ?: return
         if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true)) return
 
-        inspectProfile(name)
+        inspectProfile(name, announce = true)
     }
 
     fun onTick(minecraft: Minecraft) {
@@ -49,32 +65,79 @@ object FishingPartyHelper {
             return
         }
 
+        if (ModConfig.values.partyReadinessHud && clientTick % HUD_REFRESH_TICKS == 0L) {
+            refreshPartyReadiness()
+        }
+
         val level = minecraft.level ?: return
         pendingScans.entries.toList().forEach { (key, scan) ->
             findPlayer(level, scan.name)?.let { observe(minecraft, level, it, scan) }
             if (clientTick - scan.startedAt >= SCAN_TICKS) {
                 pendingScans.remove(key)
                 val readiness = scan.toReadiness()
+                cache(readiness, hotbarScoped = false)
                 show(readiness)
                 maybeKick(readiness)
             }
         }
     }
 
-    private fun inspectProfile(name: String) {
+    private fun inspectProfile(name: String, announce: Boolean) {
         val key = name.lowercase()
         if (!pendingApi.add(key)) return
-        HypixelProfileClient.inspect(name).whenComplete { readiness, throwable ->
+        HypixelProfileClient.inspect(name, hotbarOnly = !announce).whenComplete { readiness, throwable ->
             pendingApi.remove(key)
             Minecraft.getInstance().execute {
                 if (throwable != null) {
-                    startInGameScan(name)
+                    if (announce) startInGameScan(name)
                 } else {
-                    show(readiness)
-                    maybeKick(readiness)
+                    val resolved = withLocalHotbar(readiness)
+                    cache(resolved, hotbarScoped = !announce)
+                    if (announce) {
+                        show(resolved)
+                        maybeKick(resolved)
+                    }
                 }
             }
         }
+    }
+
+    fun refreshPartyReadiness() {
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel() || !PartyState.isInParty()) return
+        val now = System.currentTimeMillis()
+        PartyState.memberNames().forEach { name ->
+            val cached = readinessCache[name.lowercase()]
+            if (cached == null || !cached.hotbarScoped || now - cached.updatedAt >= HUD_STALE_MILLIS) {
+                inspectProfile(name, announce = false)
+            }
+        }
+    }
+
+    fun hudStatuses(): List<HudStatus> {
+        if (!ModConfig.values.fishingPartyHelper || !PartyState.isInParty()) return emptyList()
+        val minecraft = Minecraft.getInstance()
+        val localName = minecraft.user.name
+        val localWeapons = LootingVScanner.localHotbar(minecraft)
+        return PartyState.memberNames()
+            .sortedWith(compareBy<String> { !it.equals(localName, ignoreCase = true) }.thenBy { it.lowercase() })
+            .map { name ->
+                val readiness = readinessCache[name.lowercase()]?.data
+                HudStatus(
+                    name = name,
+                    canJawbus = readiness?.canJawbus,
+                    lootingV = if (name.equals(localName, ignoreCase = true)) localWeapons?.isNotEmpty() else readiness?.hasLootingV,
+                    bloodshot = readiness?.bloodshotBelt,
+                )
+            }
+    }
+
+    fun finisherNames(): List<String> = hudStatuses().filter { it.lootingV == true }.map(HudStatus::name)
+
+    fun reset() {
+        pendingApi.clear()
+        pendingScans.clear()
+        readinessCache.clear()
+        clientTick = 0L
     }
 
     fun debugInspect(name: String) {
@@ -114,7 +177,7 @@ object FishingPartyHelper {
         Chat.info(
             "Party helper status: enabled=${ModConfig.values.fishingPartyHelper}, " +
                 "hypixel=${GameContext.isOnHypixel()}, pendingProfiles=${pendingApi.size}, " +
-                "pendingGearScans=${pendingScans.size}, ${HypixelProfileClient.statusSummary()}.",
+                "pendingGearScans=${pendingScans.size}, hudProfiles=${readinessCache.size}, ${HypixelProfileClient.statusSummary()}.",
         )
     }
 
@@ -193,6 +256,21 @@ object FishingPartyHelper {
         bloodshotBelt = null,
         observedInWorld = observedInWorld,
     )
+
+    private fun withLocalHotbar(data: FishingReadiness): FishingReadiness {
+        val minecraft = Minecraft.getInstance()
+        if (!data.name.equals(minecraft.user.name, ignoreCase = true)) return data
+        val weapons = LootingVScanner.localHotbar(minecraft) ?: return data
+        return data.copy(
+            lootingWeapon = weapons.firstOrNull(),
+            lootingWeapons = weapons,
+            lootingV = weapons.isNotEmpty(),
+        )
+    }
+
+    private fun cache(data: FishingReadiness, hotbarScoped: Boolean) {
+        readinessCache[data.name.lowercase()] = CachedReadiness(data, System.currentTimeMillis(), hotbarScoped)
+    }
 
     private data class SummaryValue(val label: String, val value: String, val state: CheckState)
 

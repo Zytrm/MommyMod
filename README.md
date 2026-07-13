@@ -24,11 +24,12 @@
 
 ## Features
 
-- **Hide Fishing Line** — hides the line between your rod and bobber without hiding the bobber.
+- **Hide Fishing Line** — hides fishing lines and can optionally hide other bobbers or every submerged bobber.
 - **LouderCatch** — plays a configurable alert exactly when a fish is ready to reel, with volume up to 20x.
-- **FishingPartyHelper** — checks Fishing 45, Silver Trophy Hunter, Looting V, Bloodshot belt, and Jawbus eligibility when players join.
+- **FishingPartyHelper** — checks Fishing 45, Silver Trophy Hunter, Looting V, Bloodshot belt, and Jawbus eligibility, with a compact party block attached to the Hypixel sidebar.
 - **Jawbus Finder** — shows a compact alert only when a non-party player dies to Lord Jawbus in your lobby.
-- **Looting V Message** — sends one configurable reminder when you spawn a Jawbus.
+- **Jawbus Finisher** — tracks a locally hooked Jawbus, highlights confirmed Looting V finishers at low health, and can send one configurable party callout.
+- **Rare Screenshots** — automatically captures RNG drops, local dyes and vials, and rare experiment or reward announcements.
 - **Aura Player** — plays YouTube searches and links, SoundCloud, supported direct media URLs, playlists, and local files inside Minecraft without an account.
 - **Party Commands** — provides configurable party-only helpers, starting with a hotbar-based Looting V check.
 - **ClickGUI** — controls the menu accent, feature sorting, click sounds, HUD positions, and UI reset tools.
@@ -59,7 +60,7 @@ Aura Player is in the compact **Misc** category. Right-click it to control volum
 
 ClickGUI is always available under **Dev**. Right-click it to change the accent and sorting, toggle click sounds, open the draggable HUD editor, or reset the UI settings.
 
-Party Commands is under **Misc**. Its Looting V Check uses `/lootingv` by default; right-click the feature to enable or rename the command. It uses the locally maintained party state first, checks Hyperion and Flaming Flay in each member's latest hotbar data, and sends a compact `[MM]` heading followed by one party-only result line per member. Unavailable inventory data is reported as `Unknown`, never as `No`.
+Party Commands is under **Misc**. Looting V Check uses `/lootingv` by default, and Last Jawbus Time uses `/jawbustime`; right-click the feature to enable or rename either command. Results stay in party chat. The Looting V check uses locally maintained party state first and reports unavailable inventory data as `Unknown`, never as `No`.
 
 Spotify links open in the desktop app or browser because Spotify does not provide playable audio streams to the embedded player.
 
@@ -89,6 +90,8 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 - Remote Looting V party checks use the latest public SkyBlock hotbar data available through the readiness service. The local player's nine hotbar slots are inspected directly.
 - A player can Jawbus only with Fishing 45 or higher and Silver Trophy Hunter.
 - The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
+- The party readiness block is rendered immediately below Hypixel's sidebar. It falls back to the same compact right-side position when no server sidebar is active; `J`, `L5`, and `BS` mean Jawbus-ready, Looting V, and Bloodshot.
+- Rare screenshots wait briefly so the triggering announcement appears in the image, reject player chat, and save into the normal Minecraft screenshots folder.
 - Jawbus Finder matches the exact skull-prefixed `☠ <player> was killed by Lord Jawbus.` line. Party joins, departures, transfers, party chat, and `/party list` role lines keep the exclusion list current.
 - Jawbus alerts and chat reminders use narrow Hypixel messages with per-event cooldowns to avoid duplicates.
 

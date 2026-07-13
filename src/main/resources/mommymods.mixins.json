@@ -5,6 +5,7 @@
   "client": [
     "ClientPacketListenerMixin",
     "FishingHookAccessor",
+    "FishingHookRenderStateMixin",
     "FishingHookRendererMixin",
     "GuiMixin",
     "MultiPlayerGameModeMixin"

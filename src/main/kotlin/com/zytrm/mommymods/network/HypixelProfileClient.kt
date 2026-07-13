@@ -21,7 +21,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 object HypixelProfileClient {
     private const val BASE_ENDPOINT = "https://mommymods-gateway.zapk32.workers.dev"
-    private const val CACHE_MILLIS = 6 * 60 * 60 * 1000L
+    private const val READINESS_CACHE_MILLIS = 6 * 60 * 60 * 1000L
+    private const val HOTBAR_CACHE_MILLIS = 60 * 1000L
     private val modVersion by lazy {
         FabricLoader.getInstance().getModContainer(MommyMods.MOD_ID)
             .orElseThrow { IllegalStateException("MommyMods metadata is unavailable") }
@@ -139,7 +140,8 @@ object HypixelProfileClient {
                 )
             }
         }.thenApply {
-            cache[cacheKey] = CachedReadiness(it, System.currentTimeMillis() + CACHE_MILLIS)
+            val cacheMillis = if (hotbarOnly) HOTBAR_CACHE_MILLIS else READINESS_CACHE_MILLIS
+            cache[cacheKey] = CachedReadiness(it, System.currentTimeMillis() + cacheMillis)
             emit("complete", "SUCCESS", "Readiness evaluation completed.")
             it
         }
