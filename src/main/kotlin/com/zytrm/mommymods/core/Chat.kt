@@ -6,7 +6,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.MutableComponent
 
 object Chat {
-    private fun prefix(): MutableComponent = Component.literal("[MommyMods] ")
+    private fun prefix(): MutableComponent = Component.literal("[MM] ")
         .withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD)
 
     fun info(message: String) {
