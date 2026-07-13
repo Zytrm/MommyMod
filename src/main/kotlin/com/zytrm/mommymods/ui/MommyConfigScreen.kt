@@ -4,6 +4,7 @@ import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.LootingVMessage
 import com.zytrm.mommymods.feature.MediaPlayer
+import com.zytrm.mommymods.feature.PartyCommands
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
@@ -24,6 +25,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         LOOTING_MESSAGE("Looting V Message", true),
         JAWBUS_FINDER("Jawbus Finder", true),
         MEDIA_PLAYER("Aura Player", true),
+        PARTY_COMMANDS("Party Commands", true),
         CLICK_GUI("ClickGUI", true);
 
         fun enabled(): Boolean = when (this) {
@@ -33,6 +35,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
             MEDIA_PLAYER -> ModConfig.values.mediaPlayer
+            PARTY_COMMANDS -> ModConfig.values.partyCommandsEnabled
             CLICK_GUI -> true
         }
 
@@ -47,6 +50,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                     ModConfig.values.mediaPlayer = value
                     MediaPlayer.onEnabledChanged(value)
                 }
+                PARTY_COMMANDS -> ModConfig.values.partyCommandsEnabled = value
                 CLICK_GUI -> Unit
             }
         }
@@ -67,7 +71,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 FeatureEntry.JAWBUS_FINDER,
             ),
         ),
-        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER)),
+        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER, FeatureEntry.PARTY_COMMANDS)),
         FeatureCategory("DEV", listOf(FeatureEntry.CLICK_GUI)),
     )
 
@@ -79,6 +83,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
     private var windowDragY = 0
     private var draggingSlider: DraggingSlider? = null
     private lateinit var lootingMessageBox: EditBox
+    private val partyAliasBoxes = mutableMapOf<String, EditBox>()
 
     private val accent: Int get() = UiStyle.accent
     private val accentBright: Int get() = UiStyle.accentBright
@@ -101,6 +106,18 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         lootingMessageBox.setResponder { value -> ModConfig.values.lootingVMessage = value }
         lootingMessageBox.visible = false
         addRenderableWidget(lootingMessageBox)
+
+        PartyCommands.definitions.forEach { definition ->
+            val box = EditBox(font, 0, 0, 92, 16, Component.literal("${definition.label} alias"))
+            box.setMaxLength(24)
+            box.setValue(PartyCommands.alias(definition))
+            box.setResponder { value ->
+                if (PartyCommands.acceptsAliasInput(value)) PartyCommands.setting(definition).alias = value.lowercase()
+            }
+            box.visible = false
+            partyAliasBoxes[definition.id] = box
+            addRenderableWidget(box)
+        }
     }
 
     override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -108,6 +125,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
         val selected = openFeature
         lootingMessageBox.visible = selected == FeatureEntry.LOOTING_MESSAGE
+        partyAliasBoxes.values.forEach { it.visible = selected == FeatureEntry.PARTY_COMMANDS }
         if (selected != null) {
             graphics.fill(0, 0, width, height, 0x76000000)
             drawConfigWindow(graphics, selected, mouseX, mouseY)
@@ -171,6 +189,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             FeatureEntry.LOOTING_MESSAGE -> drawLootingMessageWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.MEDIA_PLAYER -> drawMediaPlayerWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.PARTY_COMMANDS -> drawPartyCommandsWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.CLICK_GUI -> drawClickGuiWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.HIDE_LINE -> Unit
         }
@@ -240,6 +259,25 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             "${(ModConfig.values.mediaVolume * 100).roundToInt()}%",
         )
         drawActionSetting(graphics, windowY + 118, windowWidth, "Player", "OPEN", mouseX, mouseY)
+    }
+
+    private fun drawPartyCommandsWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        val featureEnabled = ModConfig.values.partyCommandsEnabled
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", featureEnabled, true, mouseX, mouseY)
+        PartyCommands.definitions.forEachIndexed { index, definition ->
+            val setting = PartyCommands.setting(definition)
+            val toggleY = windowY + 52 + index * 44
+            val aliasY = toggleY + 22
+            drawToggleSetting(graphics, toggleY, windowWidth, definition.label, setting.enabled, featureEnabled, mouseX, mouseY)
+            graphics.fill(windowX + 10, aliasY, windowX + windowWidth - 10, aliasY + 20, windowInner)
+            graphics.text(font, "Alias", windowX + 16, aliasY + 6, if (featureEnabled && setting.enabled) textColor else disabledText, false)
+            val box = partyAliasBoxes.getValue(definition.id)
+            box.setX(windowX + windowWidth - 112)
+            box.setY(aliasY + 2)
+            box.setWidth(92)
+            box.setEditable(featureEnabled && setting.enabled)
+            box.setTextColor(if (featureEnabled && setting.enabled) accentBright else disabledText)
+        }
     }
 
     private fun drawClickGuiWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -435,6 +473,19 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 } else return false
                 else -> return false
             }
+            FeatureEntry.PARTY_COMMANDS -> {
+                if (mouseY in (windowY + 30)..(windowY + 49)) {
+                    ModConfig.values.partyCommandsEnabled = !ModConfig.values.partyCommandsEnabled
+                } else {
+                    val commandIndex = PartyCommands.definitions.indices.firstOrNull { index ->
+                        mouseY in (windowY + 52 + index * 44)..(windowY + 71 + index * 44)
+                    } ?: return false
+                    if (!ModConfig.values.partyCommandsEnabled) return false
+                    val definition = PartyCommands.definitions[commandIndex]
+                    val setting = PartyCommands.setting(definition)
+                    setting.enabled = !setting.enabled
+                }
+            }
             FeatureEntry.CLICK_GUI -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.clickGuiSound = !ModConfig.values.clickGuiSound
                 in (windowY + 52)..(windowY + 71) -> UiStyle.cycleAccent()
@@ -493,6 +544,11 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         draggingWindow = false
         draggingSlider = null
         lootingMessageBox.visible = false
+        partyAliasBoxes.values.forEach { it.visible = false }
+        PartyCommands.ensureSettings()
+        PartyCommands.definitions.forEach { definition ->
+            partyAliasBoxes[definition.id]?.setValue(PartyCommands.alias(definition))
+        }
         openFeature = null
         ModConfig.save()
     }
@@ -549,11 +605,13 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         FeatureEntry.LOOTING_MESSAGE -> 300 to 98
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
         FeatureEntry.MEDIA_PLAYER -> 230 to 142
+        FeatureEntry.PARTY_COMMANDS -> 250 to (54 + PartyCommands.definitions.size * 44)
         FeatureEntry.CLICK_GUI -> 230 to 142
         FeatureEntry.HIDE_LINE -> 210 to 70
     }
 
     override fun onClose() {
+        PartyCommands.ensureSettings()
         ModConfig.save()
         super.onClose()
     }

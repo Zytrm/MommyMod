@@ -7,6 +7,7 @@ data class FishingReadiness(
     val silverTrophyHunter: Boolean?,
     val inventoryAvailable: Boolean,
     val lootingWeapon: String?,
+    val lootingWeapons: List<String> = emptyList(),
     val lootingV: Boolean? = lootingWeapon?.let { true },
     val beltCheckAvailable: Boolean = false,
     val fishingBelt: String? = null,

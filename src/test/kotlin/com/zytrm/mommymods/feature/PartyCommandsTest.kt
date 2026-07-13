@@ -1,0 +1,59 @@
+package com.zytrm.mommymods.feature
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class PartyCommandsTest {
+    @Test
+    fun formatsOneCompactPartyMessageWithWeaponNames() {
+        val message = LootingVPartyCheck.formatMessage(
+            listOf(
+                LootingVPartyCheck.Result("Zytrm", listOf("Hyperion", "Flaming Flay")),
+                LootingVPartyCheck.Result("Fisher", emptyList()),
+                LootingVPartyCheck.Result("Hidden", null),
+            ),
+        )
+
+        assertEquals(
+            "[MM] Who has Looting V?: Zytrm: Yes (Hyperion & Flaming Flay), Fisher: No, Hidden: Unknown",
+            message,
+        )
+        assertTrue(message.length <= 252)
+        assertFalse(message.contains('\n'))
+    }
+
+    @Test
+    fun recognizesOnlyLootingFiveOnSupportedWeapons() {
+        assertEquals("Hyperion" to true, LootingVScanner.classify("Heroic Hyperion\nLooting V"))
+        assertEquals("Flaming Flay" to false, LootingVScanner.classify("Flaming Flay\nLooting IV"))
+        assertEquals(null, LootingVScanner.classify("Terminator\nLooting V"))
+    }
+
+    @Test
+    fun removesWeaponDetailsBeforeOmittingPartyMembers() {
+        val results = (1..8).map { index ->
+            LootingVPartyCheck.Result("LongPlayerName$index", listOf("Hyperion", "Flaming Flay"))
+        }
+
+        val message = LootingVPartyCheck.formatMessage(results)
+        assertTrue(message.length <= 252)
+        assertFalse(message.contains("Hyperion"))
+        assertTrue(message.contains("LongPlayerName8"))
+    }
+
+    @Test
+    fun partyListSnapshotKeepsDisplayNamesAndCompletionState() {
+        PartyState.reset()
+        PartyState.applyMessage("Party Members (2)", "LocalPlayer")
+        PartyState.applyMessage("Party Leader: [MVP+] LocalPlayer ●", "LocalPlayer")
+        PartyState.applyMessage("Party Members: [VIP] Friend_One ●", "LocalPlayer")
+
+        val snapshot = PartyState.snapshot()
+        assertTrue(snapshot.inParty)
+        assertTrue(snapshot.listComplete)
+        assertEquals(setOf("LocalPlayer", "Friend_One"), snapshot.members.toSet())
+        PartyState.reset()
+    }
+}

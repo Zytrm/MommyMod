@@ -8,6 +8,11 @@ import java.nio.file.StandardCopyOption
 
 const val DEFAULT_LOOTING_V_MESSAGE = "Please do not kill my Jawbus unless you have Looting V."
 
+data class PartyCommandSetting(
+    var enabled: Boolean = true,
+    var alias: String = "",
+)
+
 data class MommySettings(
     var hideFishingLine: Boolean = true,
     var louderCatch: Boolean = true,
@@ -26,6 +31,8 @@ data class MommySettings(
     var mediaVolume: Float = 0.8f,
     var mediaHud: Boolean = true,
     var mediaAutoplay: Boolean = true,
+    var partyCommandsEnabled: Boolean = true,
+    var partyCommandSettings: MutableMap<String, PartyCommandSetting> = mutableMapOf(),
     var clickGuiSound: Boolean = true,
     var clickGuiAccent: Int = 0xFFFF4F91.toInt(),
     var clickGuiSorting: String = "No Sorting",
@@ -56,6 +63,9 @@ object ModConfig {
         }
         save()
     }
+
+    fun partyCommandSetting(id: String, defaultAlias: String): PartyCommandSetting =
+        values.partyCommandSettings.getOrPut(id) { PartyCommandSetting(alias = defaultAlias) }
 
     @Synchronized
     fun save() {

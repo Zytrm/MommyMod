@@ -186,6 +186,7 @@ object FishingPartyHelper {
         silverTrophyHunter = null,
         inventoryAvailable = observedInWorld,
         lootingWeapon = lootingWeapon,
+        lootingWeapons = if (hasLootingV == true) listOfNotNull(lootingWeapon) else emptyList(),
         lootingV = hasLootingV,
         beltCheckAvailable = false,
         fishingBelt = null,

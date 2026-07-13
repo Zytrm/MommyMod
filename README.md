@@ -30,6 +30,7 @@
 - **Jawbus Finder** — shows a compact alert only when a non-party player dies to Lord Jawbus in your lobby.
 - **Looting V Message** — sends one configurable reminder when you spawn a Jawbus.
 - **Aura Player** — plays YouTube searches and links, SoundCloud, supported direct media URLs, playlists, and local files inside Minecraft without an account.
+- **Party Commands** — provides configurable party-only helpers, starting with a hotbar-based Looting V check.
 - **ClickGUI** — controls the menu accent, feature sorting, click sounds, HUD positions, and UI reset tools.
 
 ## Configuration
@@ -58,6 +59,8 @@ Aura Player is in the compact **Misc** category. Right-click it to control volum
 
 ClickGUI is always available under **Dev**. Right-click it to change the accent and sorting, toggle click sounds, open the draggable HUD editor, or reset the UI settings.
 
+Party Commands is under **Misc**. Its Looting V Check uses `/lootingv` by default; right-click the feature to enable or rename the command. It refreshes the current party, checks Hyperion and Flaming Flay in each member's latest hotbar data, and sends one compact `[MM]` result through `/pc`. Unavailable inventory data is reported as `Unknown`, never as `No`.
+
 Spotify links open in the desktop app or browser because Spotify does not provide playable audio streams to the embedded player.
 
 <details>
@@ -81,6 +84,7 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 - Fishing features activate only on `hypixel.net` and its subdomains.
 - LouderCatch follows the local hook lifecycle and confirms the associated `!!!` fishing timer marker before alerting.
 - FishingPartyHelper uses a narrow readiness service and falls back to visible in-game gear when profile data is unavailable. Unknown values are never treated as failures for auto-kick.
+- Remote Looting V party checks use the latest public SkyBlock hotbar data available through the readiness service. The local player's nine hotbar slots are inspected directly.
 - A player can Jawbus only with Fishing 45 or higher and Silver Trophy Hunter.
 - The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
 - Jawbus Finder matches the exact skull-prefixed `☠ <player> was killed by Lord Jawbus.` line. Party joins, departures, transfers, party chat, and `/party list` role lines keep the exclusion list current.

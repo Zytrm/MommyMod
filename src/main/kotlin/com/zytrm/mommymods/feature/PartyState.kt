@@ -5,12 +5,26 @@ import java.util.concurrent.ConcurrentHashMap
 
 object PartyState {
     private val members = ConcurrentHashMap.newKeySet<String>()
+    private val displayNames = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var leader: String? = null
 
     @Volatile
     private var inParty = false
+
+    @Volatile
+    private var partyListGeneration = 0L
+
+    @Volatile
+    private var expectedMemberCount: Int? = null
+
+    data class Snapshot(
+        val inParty: Boolean,
+        val members: List<String>,
+        val listGeneration: Long,
+        val listComplete: Boolean,
+    )
 
     private val joinedOther = Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) joined the party\\.$")
     private val joinedSelf = Regex("^You have joined (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})'?s? party!$")
@@ -47,8 +61,11 @@ object PartyState {
 
         partyHeader.matchEntire(message)?.let { match ->
             members.clear()
+            displayNames.clear()
             leader = null
-            inParty = match.groupValues[1].toIntOrNull()?.let { it > 0 } == true
+            expectedMemberCount = match.groupValues[1].toIntOrNull()
+            inParty = expectedMemberCount?.let { it > 0 } == true
+            partyListGeneration++
             addLocalPlayer(localPlayer)
             return
         }
@@ -86,7 +103,7 @@ object PartyState {
         if (created.matches(message)) {
             reset()
             inParty = true
-            leader = localPlayer
+            leader = localPlayer?.lowercase()
             addLocalPlayer(localPlayer)
             return
         }
@@ -112,23 +129,41 @@ object PartyState {
 
     fun isMember(name: String): Boolean = inParty && name.lowercase() in members
 
-    fun isLocalLeader(): Boolean = inParty && leader == localName()
+    fun isLocalLeader(): Boolean = inParty && leader == localName()?.lowercase()
 
-    fun memberNames(): Set<String> = members.toSet()
+    fun isInParty(): Boolean = inParty
+
+    fun memberNames(): Set<String> = displayNames.values.toSet()
+
+    fun snapshot(): Snapshot {
+        val expected = expectedMemberCount
+        val names = displayNames.values.sortedWith(String.CASE_INSENSITIVE_ORDER)
+        return Snapshot(
+            inParty = inParty,
+            members = names,
+            listGeneration = partyListGeneration,
+            listComplete = inParty && expected != null && names.size >= expected,
+        )
+    }
 
     fun reset() {
         members.clear()
+        displayNames.clear()
         leader = null
         inParty = false
+        expectedMemberCount = null
+        partyListGeneration++
     }
 
     private fun addMember(name: String) {
-        members.add(name.lowercase())
+        val key = name.lowercase()
+        members.add(key)
+        displayNames[key] = name
     }
 
     private fun addLocalPlayer(localPlayer: String?) {
-        localPlayer?.lowercase()?.let(members::add)
+        localPlayer?.let(::addMember)
     }
 
-    private fun localName(): String? = Minecraft.getInstance().user.name.takeIf { it.isNotBlank() }?.lowercase()
+    private fun localName(): String? = Minecraft.getInstance().user.name.takeIf { it.isNotBlank() }
 }

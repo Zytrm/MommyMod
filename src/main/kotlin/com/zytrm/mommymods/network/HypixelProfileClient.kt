@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 object HypixelProfileClient {
-    private const val ENDPOINT = "https://mommymods-api.zapk32.workers.dev/v2/readiness"
+    private const val BASE_ENDPOINT = "https://mommymods-api.zapk32.workers.dev"
     private const val CACHE_MILLIS = 6 * 60 * 60 * 1000L
     private val client = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(8))
@@ -54,12 +54,13 @@ object HypixelProfileClient {
         playerName: String,
         diagnostics: ((Diagnostic) -> Unit)? = null,
         bypassCache: Boolean = false,
+        hotbarOnly: Boolean = false,
     ): CompletableFuture<FishingReadiness> {
         val emit = { stage: String, status: String, detail: String ->
             runCatching { diagnostics?.invoke(Diagnostic(stage, status, detail)) }
             Unit
         }
-        val cacheKey = playerName.lowercase()
+        val cacheKey = "${if (hotbarOnly) "hotbar" else "readiness"}:${playerName.lowercase()}"
         val now = System.currentTimeMillis()
         if (!bypassCache) {
             cache[cacheKey]?.takeIf { it.expiresAt > now }?.let {
@@ -79,8 +80,9 @@ object HypixelProfileClient {
             val uuid = connectedUuid ?: resolveUuid(playerName, emit)
             val encodedUuid = URLEncoder.encode(uuid.toString().replace("-", ""), StandardCharsets.UTF_8)
             emit("backend", "REQUEST", "Requesting the readiness service.")
+            val endpoint = if (hotbarOnly) "v3" else "v2"
             val response = send(
-                HttpRequest.newBuilder(URI("$ENDPOINT/$encodedUuid"))
+                HttpRequest.newBuilder(URI("$BASE_ENDPOINT/$endpoint/readiness/$encodedUuid"))
                     .timeout(Duration.ofSeconds(15))
                     .header("Accept", "application/json")
                     .header("User-Agent", "MommyMods")
@@ -151,6 +153,7 @@ object HypixelProfileClient {
             silverTrophyHunter = root.booleanOrNull("silverTrophyHunter"),
             inventoryAvailable = root.booleanOrNull("inventoryAvailable") == true,
             lootingWeapon = root.stringOrNull("lootingWeapon"),
+            lootingWeapons = root.stringList("lootingWeapons"),
             lootingV = root.booleanOrNull("lootingV"),
             beltCheckAvailable = root.booleanOrNull("beltCheckAvailable") == true,
             fishingBelt = root.stringOrNull("fishingBelt"),
@@ -262,4 +265,9 @@ object HypixelProfileClient {
         ?.takeUnless { it.isJsonNull }
         ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }
         ?.asBoolean
+
+    private fun JsonObject.stringList(key: String): List<String> = getAsJsonArray(key)
+        ?.mapNotNull { value -> value.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString }
+        ?.distinct()
+        .orEmpty()
 }
