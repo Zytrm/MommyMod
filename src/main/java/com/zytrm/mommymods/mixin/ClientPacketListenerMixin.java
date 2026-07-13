@@ -2,6 +2,7 @@ package com.zytrm.mommymods.mixin;
 
 import com.zytrm.mommymods.MommyMods;
 import com.zytrm.mommymods.feature.LouderCatch;
+import com.zytrm.mommymods.feature.PartyCommands;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
@@ -21,6 +22,10 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)
     private void mommymods$openMenuCommand(String command, CallbackInfo ci) {
+        if (PartyCommands.tryHandleCommand(command)) {
+            ci.cancel();
+            return;
+        }
         String normalized = command.trim().replaceAll("\\s+", " ").toLowerCase();
         if (normalized.equals("mm") || normalized.equals("mommymods") || normalized.equals("mommy mods")) {
             MommyMods.requestMenuOpen();

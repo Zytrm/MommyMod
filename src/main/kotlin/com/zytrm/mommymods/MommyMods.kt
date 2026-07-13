@@ -11,6 +11,7 @@ import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.LootingVMessage
 import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.feature.PartyState
+import com.zytrm.mommymods.feature.PartyCommands
 import com.zytrm.mommymods.ui.MommyConfigScreen
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -34,6 +35,7 @@ object MommyMods : ClientModInitializer {
 
     override fun onInitializeClient() {
         ModConfig.load()
+        PartyCommands.ensureSettings()
         MediaPlayer.initialize()
 
         ClientReceiveMessageEvents.GAME.register { component, overlay ->
@@ -53,6 +55,19 @@ object MommyMods : ClientModInitializer {
             }
             dispatcher.register(ClientCommands.literal("mommymods").executes { openScreen() })
             dispatcher.register(ClientCommands.literal("mm").executes { openScreen() })
+            PartyCommands.definitions.forEach { definition ->
+                val registeredAlias = PartyCommands.alias(definition)
+                dispatcher.register(
+                    ClientCommands.literal(registeredAlias).executes {
+                        if (PartyCommands.alias(definition) == registeredAlias) {
+                            PartyCommands.execute(definition)
+                        } else {
+                            Chat.info("This command is now /${PartyCommands.alias(definition)}.")
+                        }
+                        1
+                    },
+                )
+            }
             dispatcher.register(
                 ClientCommands.literal("mmplay")
                     .executes {
@@ -166,6 +181,7 @@ object MommyMods : ClientModInitializer {
             LouderCatch.onTick(minecraft)
             FishingPartyHelper.onTick(minecraft)
             LootingVMessage.onTick(minecraft)
+            PartyCommands.onTick()
             if (openMenuNextTick) {
                 openMenuNextTick = false
                 if (minecraft.screen !is MommyConfigScreen) {
@@ -176,6 +192,7 @@ object MommyMods : ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PartyState.reset()
+            PartyCommands.reset()
             JawbusFinder.reset()
         }
 
