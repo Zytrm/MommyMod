@@ -8,12 +8,13 @@ import com.zytrm.mommymods.media.MediaPlayerEngine
 import com.zytrm.mommymods.media.MediaResolver
 import com.zytrm.mommymods.media.MediaTrackScheduler
 import com.zytrm.mommymods.ui.MediaPlayerScreen
+import com.zytrm.mommymods.ui.HudElement
+import com.zytrm.mommymods.ui.HudLayout
+import com.zytrm.mommymods.ui.UiStyle
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import java.awt.Desktop
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.net.URI
 
 object MediaPlayer {
@@ -30,11 +31,6 @@ object MediaPlayer {
             MediaPlayerEngine(
                 initialVolume = ModConfig.values.mediaVolume,
                 autoplay = { ModConfig.values.mediaAutoplay },
-                savedRefreshToken = { ModConfig.values.mediaYoutubeRefreshToken },
-                saveRefreshToken = { token ->
-                    ModConfig.values.mediaYoutubeRefreshToken = token
-                    ModConfig.save()
-                },
                 onTrackStart = { info ->
                     status = "Playing"
                 },
@@ -131,37 +127,6 @@ object MediaPlayer {
         Minecraft.getInstance().setScreen(MediaPlayerScreen(parent))
     }
 
-    fun startYoutubeSignIn() {
-        initialize()
-        val activeEngine = engine ?: return
-        if (activeEngine.isYoutubeAuthorized()) {
-            Chat.info("YouTube is already signed in.")
-            return
-        }
-        status = "Waiting for YouTube sign-in..."
-        activeEngine.startYoutubeAuthorization(
-            onCode = { url, code ->
-                runCatching {
-                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(code), null)
-                }
-                runCatching {
-                    if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(url))
-                }
-                Chat.info("YouTube code $code copied. Complete sign-in in the opened browser.")
-            },
-            onSuccess = {
-                status = "YouTube signed in"
-                Chat.info("YouTube sign-in complete.")
-            },
-            onFailure = { message ->
-                status = message
-                Chat.info(message)
-            },
-        )
-    }
-
-    fun isYoutubeAuthorized(): Boolean = engine?.isYoutubeAuthorized() == true
-
     fun isPaused(): Boolean = engine?.isPaused() == true
 
     fun currentInfo(): MediaInfo? = engine?.currentInfo()
@@ -184,18 +149,17 @@ object MediaPlayer {
         val minecraft = Minecraft.getInstance()
         val width = 196
         val height = 38
-        val x = graphics.guiWidth() - width - 8
-        val y = graphics.guiHeight() - height - 44
+        val (x, y) = HudLayout.position(HudElement.MEDIA, width, height, graphics.guiWidth(), graphics.guiHeight())
         val title = fit(info.title, 172, minecraft)
         val state = if (isPaused()) "Paused" else "${MediaInfo.formatTime(positionMs())} / ${MediaInfo.formatTime(durationMs())}"
         val progress = if (durationMs() > 0L) (positionMs().toDouble() / durationMs()).coerceIn(0.0, 1.0) else 0.0
 
         graphics.fill(x, y, x + width, y + height, 0xD9100C12.toInt())
-        graphics.fill(x, y, x + 2, y + height, 0xFFFF4F91.toInt())
+        graphics.fill(x, y, x + 2, y + height, UiStyle.accent)
         graphics.text(minecraft.font, title, x + 9, y + 7, 0xFFFFE8F0.toInt(), false)
         graphics.text(minecraft.font, state, x + 9, y + 21, 0xFFCDB2BE.toInt(), false)
         graphics.fill(x + 9, y + 33, x + width - 9, y + 35, 0xFF44353C.toInt())
-        graphics.fill(x + 9, y + 33, x + 9 + ((width - 18) * progress).toInt(), y + 35, 0xFFFF4F91.toInt())
+        graphics.fill(x + 9, y + 33, x + 9 + ((width - 18) * progress).toInt(), y + 35, UiStyle.accent)
     }
 
     private fun fit(value: String, maxWidth: Int, minecraft: Minecraft): String {

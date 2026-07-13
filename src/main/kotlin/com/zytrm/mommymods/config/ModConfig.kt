@@ -26,7 +26,13 @@ data class MommySettings(
     var mediaVolume: Float = 0.8f,
     var mediaHud: Boolean = true,
     var mediaAutoplay: Boolean = true,
-    var mediaYoutubeRefreshToken: String? = null,
+    var clickGuiSound: Boolean = true,
+    var clickGuiAccent: Int = 0xFFFF4F91.toInt(),
+    var clickGuiSorting: String = "No Sorting",
+    var jawbusHudCenterX: Float = -1f,
+    var jawbusHudCenterY: Float = -1f,
+    var mediaHudCenterX: Float = -1f,
+    var mediaHudCenterY: Float = -1f,
 )
 
 object ModConfig {
@@ -45,6 +51,9 @@ object ModConfig {
             .getOrElse { MommySettings() }
         if (values.lootingVMessage.isBlank()) values.lootingVMessage = DEFAULT_LOOTING_V_MESSAGE
         values.mediaVolume = values.mediaVolume.coerceIn(0f, 1f)
+        if (values.clickGuiSorting !in setOf("A-Z Sorting", "Width Sorting", "No Sorting")) {
+            values.clickGuiSorting = "No Sorting"
+        }
         save()
     }
 
