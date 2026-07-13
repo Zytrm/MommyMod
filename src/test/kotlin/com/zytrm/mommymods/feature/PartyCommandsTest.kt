@@ -2,13 +2,12 @@ package com.zytrm.mommymods.feature
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PartyCommandsTest {
     @Test
-    fun formatsOneCompactPartyMessageWithWeaponNames() {
-        val message = LootingVPartyCheck.formatMessage(
+    fun formatsHeaderAndOnePartyMessagePerPlayer() {
+        val messages = LootingVPartyCheck.formatMessages(
             listOf(
                 LootingVPartyCheck.Result("Zytrm", listOf("Hyperion", "Flaming Flay")),
                 LootingVPartyCheck.Result("Fisher", emptyList()),
@@ -17,11 +16,16 @@ class PartyCommandsTest {
         )
 
         assertEquals(
-            "[MM] Who has Looting V: -Zytrm: Yes (Hyperion & Flaming Flay) -Fisher: No -Hidden: Unknown",
-            message,
+            listOf(
+                "[MM] Who has Looting V:",
+                "-Zytrm: Yes (Hyperion & Flaming Flay)",
+                "-Fisher: No",
+                "-Hidden: Unknown",
+            ),
+            messages,
         )
-        assertTrue(message.length <= 252)
-        assertFalse(message.contains('\n'))
+        assertTrue(messages.all { it.length <= 252 })
+        assertTrue(messages.none { it.contains('\n') })
     }
 
     @Test
@@ -32,15 +36,16 @@ class PartyCommandsTest {
     }
 
     @Test
-    fun removesWeaponDetailsBeforeOmittingPartyMembers() {
+    fun keepsEveryPartyMemberOnTheirOwnBoundedLine() {
         val results = (1..8).map { index ->
             LootingVPartyCheck.Result("LongPlayerName$index", listOf("Hyperion", "Flaming Flay"))
         }
 
-        val message = LootingVPartyCheck.formatMessage(results)
-        assertTrue(message.length <= 252)
-        assertFalse(message.contains("Hyperion"))
-        assertTrue(message.contains("LongPlayerName8"))
+        val messages = LootingVPartyCheck.formatMessages(results)
+        assertEquals(9, messages.size)
+        assertTrue(messages.all { it.length <= 252 })
+        assertTrue(messages.last().contains("LongPlayerName8"))
+        assertTrue(messages.last().contains("Hyperion"))
     }
 
     @Test

@@ -105,7 +105,8 @@ object LootingVPartyCheck {
     private const val PARTY_LIST_TIMEOUT_MILLIS = 3_500L
     private const val LOOKUP_TIMEOUT_MILLIS = 18_000L
     private const val MAX_PARTY_MESSAGE_LENGTH = 252
-    private const val MESSAGE_PREFIX = "[MM] Who has Looting V: "
+    private const val PARTY_LINE_INTERVAL_MILLIS = 550L
+    private const val MESSAGE_HEADER = "[MM] Who has Looting V:"
 
     internal data class Result(val name: String, val weapons: List<String>?)
 
@@ -132,7 +133,14 @@ object LootingVPartyCheck {
         var pendingResults: List<PendingResult> = emptyList(),
     )
 
+    private data class PendingPartyOutput(
+        val lines: ArrayDeque<String>,
+        val results: List<Result>,
+        var nextSendAt: Long,
+    )
+
     private var activeCheck: ActiveCheck? = null
+    private var pendingPartyOutput: PendingPartyOutput? = null
     private var nextToken = 0L
 
     fun request() {
@@ -142,6 +150,7 @@ object LootingVPartyCheck {
         }
 
         val minecraft = Minecraft.getInstance()
+        pendingPartyOutput = null
         val localName = minecraft.user.name
         val localResult = Result(localName, LootingVScanner.localHotbar(minecraft))
         val snapshot = PartyState.snapshot()
@@ -179,16 +188,19 @@ object LootingVPartyCheck {
     }
 
     fun onTick() {
-        val check = activeCheck ?: return
         val now = System.currentTimeMillis()
-        when (check.phase) {
-            Phase.REFRESHING_PARTY -> tickPartyRefresh(check, now)
-            Phase.CHECKING_MEMBERS -> if (now >= check.deadline) finishMemberChecks(check.token)
+        activeCheck?.let { check ->
+            when (check.phase) {
+                Phase.REFRESHING_PARTY -> tickPartyRefresh(check, now)
+                Phase.CHECKING_MEMBERS -> if (now >= check.deadline) finishMemberChecks(check.token)
+            }
         }
+        tickPartyOutput(now)
     }
 
     fun reset() {
         activeCheck = null
+        pendingPartyOutput = null
         nextToken++
     }
 
@@ -290,11 +302,42 @@ object LootingVPartyCheck {
             showLocalResult(results, check.fallbackNote ?: "not connected")
             return
         }
-        val message = formatMessage(results)
-        runCatching { connection.sendCommand("pc $message") }
+        pendingPartyOutput = PendingPartyOutput(
+            lines = ArrayDeque(formatMessages(results)),
+            results = results,
+            nextSendAt = 0L,
+        )
+        tickPartyOutput(System.currentTimeMillis())
+    }
+
+    private fun tickPartyOutput(now: Long) {
+        val output = pendingPartyOutput ?: return
+        if (now < output.nextSendAt) return
+        if (!PartyState.isInParty()) {
+            pendingPartyOutput = null
+            showLocalResult(output.results, "party changed")
+            return
+        }
+        val connection = Minecraft.getInstance().connection
+        if (connection == null) {
+            pendingPartyOutput = null
+            showLocalResult(output.results, "not connected")
+            return
+        }
+
+        val line = output.lines.removeFirst()
+        runCatching { connection.sendCommand("pc $line") }
+            .onSuccess {
+                if (output.lines.isEmpty()) {
+                    pendingPartyOutput = null
+                } else {
+                    output.nextSendAt = now + PARTY_LINE_INTERVAL_MILLIS
+                }
+            }
             .onFailure {
+                pendingPartyOutput = null
                 MommyMods.logger.warn("Could not send the Looting V party result", it)
-                showLocalResult(results, "party send failed")
+                showLocalResult(output.results, "party send failed")
             }
     }
 
@@ -305,45 +348,22 @@ object LootingVPartyCheck {
     }
 
     private fun showLocalResult(results: List<Result>, note: String) {
-        val body = formatMessage(results).removePrefix("[MM] ")
+        val body = "Who has Looting V: " + results.joinToString(" ") { "-${formatEntry(it)}" }
         Chat.info("$body · $note")
     }
 
-    internal fun formatMessage(results: List<Result>): String {
-        val detailed = formatAll(results, includeWeapons = true)
-        if (detailed.length <= MAX_PARTY_MESSAGE_LENGTH) return detailed
-        val compact = formatAll(results, includeWeapons = false)
-        if (compact.length <= MAX_PARTY_MESSAGE_LENGTH) return compact
-        return formatLimited(results)
-    }
-
-    private fun formatAll(results: List<Result>, includeWeapons: Boolean): String =
-        MESSAGE_PREFIX + results.joinToString(" ") { result -> "-${formatEntry(result, includeWeapons)}" }
-
-    private fun formatLimited(results: List<Result>): String {
-        val entries = results.map { formatEntry(it, includeWeapons = false) }
-        val output = StringBuilder(MESSAGE_PREFIX)
-        for (index in entries.indices) {
-            val entry = entries[index]
-            val entryWithMarker = "-$entry"
-            val separator = if (index == 0) "" else " "
-            val remaining = entries.size - index - 1
-            val overflow = if (remaining > 0) " +$remaining more" else ""
-            if (output.length + separator.length + entryWithMarker.length + overflow.length > MAX_PARTY_MESSAGE_LENGTH) {
-                output.append(" +${remaining + 1} more")
-                break
-            }
-            output.append(separator).append(entryWithMarker)
+    internal fun formatMessages(results: List<Result>): List<String> = buildList {
+        add(MESSAGE_HEADER)
+        results.forEach { result ->
+            add("-${formatEntry(result)}".take(MAX_PARTY_MESSAGE_LENGTH))
         }
-        return output.toString().take(MAX_PARTY_MESSAGE_LENGTH)
     }
 
-    private fun formatEntry(result: Result, includeWeapons: Boolean): String {
+    private fun formatEntry(result: Result): String {
         val status = when {
             result.weapons == null -> "Unknown"
             result.weapons.isEmpty() -> "No"
-            includeWeapons -> "Yes (${result.weapons.joinToString(" & ")})"
-            else -> "Yes"
+            else -> "Yes (${result.weapons.joinToString(" & ")})"
         }
         return "${result.name}: $status"
     }
