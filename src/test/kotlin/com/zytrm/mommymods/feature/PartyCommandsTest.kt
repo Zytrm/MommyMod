@@ -17,7 +17,7 @@ class PartyCommandsTest {
         )
 
         assertEquals(
-            "[MM] Who has Looting V?: Zytrm: Yes (Hyperion & Flaming Flay), Fisher: No, Hidden: Unknown",
+            "[MM] Who has Looting V: -Zytrm: Yes (Hyperion & Flaming Flay) -Fisher: No -Hidden: Unknown",
             message,
         )
         assertTrue(message.length <= 252)
@@ -68,6 +68,45 @@ class PartyCommandsTest {
         assertTrue(snapshot.listComplete)
         assertEquals(listOf("Zytrm"), snapshot.members)
         assertTrue(PartyState.isMember("Zytrm"))
+        PartyState.reset()
+    }
+
+    @Test
+    fun parsesMultiLinePartyDisplayAsCompleteVisibleState() {
+        PartyState.reset()
+        PartyState.applyMessage(
+            """
+            Party Members (2)
+
+            [Warp] [Invite] [Disband]
+            ● [MVP++] Zytrm (Leader)
+            ● [VIP] Fisher (Member)
+            """.trimIndent(),
+            "Zytrm",
+        )
+
+        val snapshot = PartyState.snapshot()
+        assertTrue(snapshot.inParty)
+        assertTrue(snapshot.listComplete)
+        assertTrue(LootingVPartyCheck.canUseCachedParty(snapshot))
+        assertEquals(setOf("Zytrm", "Fisher"), snapshot.members.toSet())
+        assertTrue(PartyState.isPartyListResponse("Party Members (2)\n● [MVP++] Zytrm (Leader)"))
+        PartyState.reset()
+    }
+
+    @Test
+    fun knownJoinAndLeaveKeepCompleteCachedPartyState() {
+        PartyState.reset()
+        PartyState.applyMessage("You have created a party!", "LocalPlayer")
+        assertTrue(PartyState.snapshot().listComplete)
+
+        PartyState.applyMessage("Friend_One joined the party.", "LocalPlayer")
+        assertTrue(PartyState.snapshot().listComplete)
+        assertEquals(setOf("LocalPlayer", "Friend_One"), PartyState.snapshot().members.toSet())
+
+        PartyState.applyMessage("Friend_One has left the party.", "LocalPlayer")
+        assertTrue(PartyState.snapshot().listComplete)
+        assertEquals(listOf("LocalPlayer"), PartyState.snapshot().members)
         PartyState.reset()
     }
 }

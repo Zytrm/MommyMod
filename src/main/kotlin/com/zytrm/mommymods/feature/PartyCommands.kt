@@ -88,6 +88,9 @@ object PartyCommands {
         LootingVPartyCheck.onTick()
     }
 
+    fun shouldHideInternalPartyRefresh(message: String): Boolean =
+        LootingVPartyCheck.isAwaitingPartyRefresh() && PartyState.isPartyListResponse(message)
+
     fun reset() {
         LootingVPartyCheck.reset()
     }
@@ -102,7 +105,7 @@ object LootingVPartyCheck {
     private const val PARTY_LIST_TIMEOUT_MILLIS = 3_500L
     private const val LOOKUP_TIMEOUT_MILLIS = 18_000L
     private const val MAX_PARTY_MESSAGE_LENGTH = 252
-    private const val MESSAGE_PREFIX = "[MM] Who has Looting V?: "
+    private const val MESSAGE_PREFIX = "[MM] Who has Looting V: "
 
     internal data class Result(val name: String, val weapons: List<String>?)
 
@@ -153,6 +156,11 @@ object LootingVPartyCheck {
         )
 
         activeCheck = check
+        if (canUseCachedParty(snapshot)) {
+            beginMemberChecks(check, snapshot.members, sendToParty = true)
+            return
+        }
+
         val connection = minecraft.connection
         if (connection == null) {
             finishLocal(check, "not connected")
@@ -183,6 +191,11 @@ object LootingVPartyCheck {
         activeCheck = null
         nextToken++
     }
+
+    fun isAwaitingPartyRefresh(): Boolean = activeCheck?.phase == Phase.REFRESHING_PARTY
+
+    internal fun canUseCachedParty(snapshot: PartyState.Snapshot): Boolean =
+        snapshot.inParty && snapshot.listComplete && snapshot.members.isNotEmpty()
 
     private fun tickPartyRefresh(check: ActiveCheck, now: Long) {
         if (activeCheck?.token != check.token) return
@@ -305,21 +318,22 @@ object LootingVPartyCheck {
     }
 
     private fun formatAll(results: List<Result>, includeWeapons: Boolean): String =
-        MESSAGE_PREFIX + results.joinToString(", ") { result -> formatEntry(result, includeWeapons) }
+        MESSAGE_PREFIX + results.joinToString(" ") { result -> "-${formatEntry(result, includeWeapons)}" }
 
     private fun formatLimited(results: List<Result>): String {
         val entries = results.map { formatEntry(it, includeWeapons = false) }
         val output = StringBuilder(MESSAGE_PREFIX)
         for (index in entries.indices) {
             val entry = entries[index]
-            val separator = if (index == 0) "" else ", "
+            val entryWithMarker = "-$entry"
+            val separator = if (index == 0) "" else " "
             val remaining = entries.size - index - 1
-            val overflow = if (remaining > 0) ", +$remaining more" else ""
-            if (output.length + separator.length + entry.length + overflow.length > MAX_PARTY_MESSAGE_LENGTH) {
-                output.append(", +${remaining + 1} more")
+            val overflow = if (remaining > 0) " +$remaining more" else ""
+            if (output.length + separator.length + entryWithMarker.length + overflow.length > MAX_PARTY_MESSAGE_LENGTH) {
+                output.append(" +${remaining + 1} more")
                 break
             }
-            output.append(separator).append(entry)
+            output.append(separator).append(entryWithMarker)
         }
         return output.toString().take(MAX_PARTY_MESSAGE_LENGTH)
     }

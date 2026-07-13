@@ -56,7 +56,25 @@ object PartyState {
         applyMessage(message, localName())
     }
 
+    internal fun isPartyListResponse(message: String): Boolean = message.lineSequence()
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .any { line ->
+            partyHeader.matches(line) ||
+                partyRoleLine.matches(line) ||
+                compactPartyMember.matches(line) ||
+                line.startsWith("[Warp] [Invite] [Disband]") ||
+                line.matches(Regex("^You are not currently in a party\\.?$"))
+        }
+
     internal fun applyMessage(message: String, localPlayer: String?) {
+        if ('\n' in message || '\r' in message) {
+            message.lineSequence()
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .forEach { applyMessage(it, localPlayer) }
+            return
+        }
         val trimmed = message.trim()
         if (trimmed != message) {
             applyMessage(trimmed, localPlayer)
@@ -99,13 +117,13 @@ object PartyState {
 
         joinedOther.matchEntire(message)?.groupValues?.get(1)?.let { name ->
             inParty = true
-            addMember(name)
+            addKnownMember(name)
             addLocalPlayer(localPlayer)
             return
         }
         partyChat.matchEntire(message)?.groupValues?.get(1)?.let { name ->
             inParty = true
-            addMember(name)
+            addKnownMember(name)
             addLocalPlayer(localPlayer)
             return
         }
@@ -122,11 +140,12 @@ object PartyState {
             inParty = true
             leader = localPlayer?.lowercase()
             addLocalPlayer(localPlayer)
+            expectedMemberCount = if (localPlayer.isNullOrBlank()) null else 1
             return
         }
 
         removed.firstNotNullOfOrNull { it.matchEntire(message)?.groupValues?.get(1) }?.let { name ->
-            members.remove(name.lowercase())
+            removeKnownMember(name)
             if (leader.equals(name, ignoreCase = true)) leader = null
             return
         }
@@ -139,7 +158,7 @@ object PartyState {
         transferred.matchEntire(message)?.groupValues?.get(1)?.let { newLeader ->
             inParty = true
             leader = newLeader.lowercase()
-            addMember(newLeader)
+            addKnownMember(newLeader)
             addLocalPlayer(localPlayer)
         }
     }
@@ -176,6 +195,20 @@ object PartyState {
         val key = name.lowercase()
         members.add(key)
         displayNames[key] = name
+    }
+
+    private fun addKnownMember(name: String) {
+        val wasKnown = members.contains(name.lowercase())
+        addMember(name)
+        if (!wasKnown) expectedMemberCount = expectedMemberCount?.plus(1)
+    }
+
+    private fun removeKnownMember(name: String) {
+        val key = name.lowercase()
+        if (members.remove(key)) {
+            displayNames.remove(key)
+            expectedMemberCount = expectedMemberCount?.minus(1)?.coerceAtLeast(0)
+        }
     }
 
     private fun addLocalPlayer(localPlayer: String?) {
