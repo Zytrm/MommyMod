@@ -92,7 +92,7 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 - A player can Jawbus only with Fishing 45 or higher and Silver Trophy Hunter.
 - The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
 - MM Party is configured directly from the Fishing category in the ClickGUI. Its readiness block is rendered immediately below Hypixel's sidebar and falls back to the same compact right-side position when no server sidebar is active; `J`, `L5`, and `BS` mean Jawbus-ready, Looting V, and Bloodshot.
-- Rare screenshots wait briefly so the triggering announcement appears in the image, reject player chat, and save into the normal Minecraft screenshots folder.
+- Rare screenshots only accept local-player drops or personal reward announcements, reject other players and ordinary Floor VII/reminder text, and save into the normal Minecraft screenshots folder.
 - Jawbus Finder matches the exact skull-prefixed `☠ <player> was killed by Lord Jawbus.` line. Party joins, departures, transfers, party chat, and `/party list` role lines keep the exclusion list current.
 - Jawbus alerts and chat reminders use narrow Hypixel messages with per-event cooldowns to avoid duplicates.
 
