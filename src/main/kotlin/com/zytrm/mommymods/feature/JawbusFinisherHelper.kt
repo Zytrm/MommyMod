@@ -43,7 +43,7 @@ object JawbusFinisherHelper {
         val now = System.currentTimeMillis()
         ModConfig.values.lastJawbusHookedAt = now
         ModConfig.save()
-        FishingPartyHelper.refreshPartyReadiness()
+        FishingPartyHelper.refreshPartyReadiness(force = true)
 
         trackedLevel = Minecraft.getInstance().level
         spawnAt = now
@@ -154,7 +154,7 @@ object JawbusFinisherHelper {
         val minecraft = Minecraft.getInstance()
         val localName = minecraft.user.name
         val names = FishingPartyHelper.finisherNames().toMutableSet()
-        if (LootingVScanner.localHotbar(minecraft)?.isNotEmpty() == true) names += localName
+        if (LootingVScanner.localInventory(minecraft)?.hasLootingV == true) names += localName
         return names.sortedWith(compareBy<String> { !it.equals(localName, ignoreCase = true) }.thenBy { it.lowercase() })
     }
 

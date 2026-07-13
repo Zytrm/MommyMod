@@ -21,8 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 object HypixelProfileClient {
     private const val BASE_ENDPOINT = "https://mommymods-gateway.zapk32.workers.dev"
-    private const val READINESS_CACHE_MILLIS = 6 * 60 * 60 * 1000L
-    private const val HOTBAR_CACHE_MILLIS = 60 * 1000L
+    private const val READINESS_CACHE_MILLIS = 55 * 1000L
     private val modVersion by lazy {
         FabricLoader.getInstance().getModContainer(MommyMods.MOD_ID)
             .orElseThrow { IllegalStateException("MommyMods metadata is unavailable") }
@@ -33,6 +32,7 @@ object HypixelProfileClient {
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
     private val cache = ConcurrentHashMap<String, CachedReadiness>()
+    private val inFlight = ConcurrentHashMap<String, CompletableFuture<FishingReadiness>>()
 
     enum class FailureKind {
         PLAYER_NOT_FOUND,
@@ -64,13 +64,12 @@ object HypixelProfileClient {
         playerName: String,
         diagnostics: ((Diagnostic) -> Unit)? = null,
         bypassCache: Boolean = false,
-        hotbarOnly: Boolean = false,
     ): CompletableFuture<FishingReadiness> {
         val emit = { stage: String, status: String, detail: String ->
             runCatching { diagnostics?.invoke(Diagnostic(stage, status, detail)) }
             Unit
         }
-        val cacheKey = "${if (hotbarOnly) "hotbar" else "readiness"}:${playerName.lowercase()}"
+        val cacheKey = "readiness:${playerName.lowercase()}"
         val now = System.currentTimeMillis()
         if (!bypassCache) {
             cache[cacheKey]?.takeIf { it.expiresAt > now }?.let {
@@ -86,68 +85,75 @@ object HypixelProfileClient {
             ?.getPlayerInfoIgnoreCase(playerName)?.profile?.id
         if (connectedUuid != null) emit("uuid", "TAB_LIST", "Resolved UUID from the current lobby.")
 
-        return CompletableFuture.supplyAsync {
-            val uuid = connectedUuid ?: resolveUuid(playerName, emit)
-            val encodedUuid = URLEncoder.encode(uuid.toString().replace("-", ""), StandardCharsets.UTF_8)
-            emit("backend", "REQUEST", "Requesting the readiness service.")
-            val endpoint = if (hotbarOnly) "v3" else "v2"
-            val response = send(
-                HttpRequest.newBuilder(URI("$BASE_ENDPOINT/$endpoint/readiness/$encodedUuid"))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Accept", "application/json")
-                    .header("User-Agent", "MommyMods/$modVersion")
-                    .header("X-MommyMods-Version", modVersion)
-                    .header("X-MommyMods-Install", ModConfig.values.installationId)
-                    .GET()
-                    .build(),
-                "backend",
-            )
-            emit("backend", "HTTP_${response.statusCode()}", "Readiness service responded.")
-            when (response.statusCode()) {
-                200 -> {
-                    rejectBlockedOrHtml(response, "backend")
-                    parse(playerName, response.body(), emit)
-                }
-                404 -> throw LookupException(
-                    FailureKind.PLAYER_NOT_FOUND,
-                    "profile",
-                    "No usable SkyBlock profile was found.",
-                )
-                401, 403 -> throw LookupException(
-                    FailureKind.DATA_BLOCKED,
-                    "backend",
-                    "The readiness service blocked or rejected the request.",
-                )
-                429 -> throw LookupException(
-                    FailureKind.RATE_LIMITED,
-                    "backend",
-                    "The readiness service rate limit was reached.",
-                )
-                426 -> throw LookupException(
-                    FailureKind.CLIENT_UPDATE_REQUIRED,
-                    "backend",
-                    "This MommyMods version is no longer supported by the readiness service.",
-                )
-                504, 522, 524 -> throw LookupException(
-                    FailureKind.TIMEOUT,
-                    "backend",
-                    "The readiness service timed out upstream.",
-                )
-                else -> throw LookupException(
-                    FailureKind.SERVICE_ERROR,
-                    "backend",
-                    "The readiness service returned HTTP ${response.statusCode()}.",
-                )
+        return synchronized(inFlight) {
+            inFlight[cacheKey]?.let { existing ->
+                emit("backend", "COALESCED", "Sharing the current readiness request.")
+                return@synchronized existing
             }
-        }.thenApply {
-            val cacheMillis = if (hotbarOnly) HOTBAR_CACHE_MILLIS else READINESS_CACHE_MILLIS
-            cache[cacheKey] = CachedReadiness(it, System.currentTimeMillis() + cacheMillis)
-            emit("complete", "SUCCESS", "Readiness evaluation completed.")
-            it
+            val request = CompletableFuture.supplyAsync {
+                val uuid = connectedUuid ?: resolveUuid(playerName, emit)
+                val encodedUuid = URLEncoder.encode(uuid.toString().replace("-", ""), StandardCharsets.UTF_8)
+                emit("backend", "REQUEST", "Requesting the readiness service.")
+                val response = send(
+                    HttpRequest.newBuilder(URI("$BASE_ENDPOINT/v4/readiness/$encodedUuid"))
+                        .timeout(Duration.ofSeconds(15))
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "MommyMods/$modVersion")
+                        .header("X-MommyMods-Version", modVersion)
+                        .header("X-MommyMods-Install", ModConfig.values.installationId)
+                        .GET()
+                        .build(),
+                    "backend",
+                )
+                emit("backend", "HTTP_${response.statusCode()}", "Readiness service responded.")
+                when (response.statusCode()) {
+                    200 -> {
+                        rejectBlockedOrHtml(response, "backend")
+                        parse(playerName, response.body(), emit)
+                    }
+                    404 -> throw LookupException(
+                        FailureKind.PLAYER_NOT_FOUND,
+                        "profile",
+                        "No usable SkyBlock profile was found.",
+                    )
+                    401, 403 -> throw LookupException(
+                        FailureKind.DATA_BLOCKED,
+                        "backend",
+                        "The readiness service blocked or rejected the request.",
+                    )
+                    429 -> throw LookupException(
+                        FailureKind.RATE_LIMITED,
+                        "backend",
+                        "The readiness service rate limit was reached.",
+                    )
+                    426 -> throw LookupException(
+                        FailureKind.CLIENT_UPDATE_REQUIRED,
+                        "backend",
+                        "This MommyMods version is no longer supported by the readiness service.",
+                    )
+                    504, 522, 524 -> throw LookupException(
+                        FailureKind.TIMEOUT,
+                        "backend",
+                        "The readiness service timed out upstream.",
+                    )
+                    else -> throw LookupException(
+                        FailureKind.SERVICE_ERROR,
+                        "backend",
+                        "The readiness service returned HTTP ${response.statusCode()}.",
+                    )
+                }
+            }.thenApply {
+                cache[cacheKey] = CachedReadiness(it, System.currentTimeMillis() + READINESS_CACHE_MILLIS)
+                emit("complete", "SUCCESS", "Readiness evaluation completed.")
+                it
+            }
+            inFlight[cacheKey] = request
+            request.whenComplete { _, _ -> inFlight.remove(cacheKey, request) }
+            request
         }
     }
 
-    fun statusSummary(): String = "backend=workers.dev cacheEntries=${cache.size}"
+    fun statusSummary(): String = "backend=workers.dev cacheEntries=${cache.size} activeRequests=${inFlight.size}"
 
     private fun parse(
         fallbackName: String,

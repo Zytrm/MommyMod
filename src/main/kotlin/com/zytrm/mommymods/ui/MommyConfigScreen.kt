@@ -1,7 +1,7 @@
 package com.zytrm.mommymods.ui
 
 import com.zytrm.mommymods.config.ModConfig
-import com.zytrm.mommymods.feature.BobberVisibility
+import com.zytrm.mommymods.feature.FishingPartyHelper
 import com.zytrm.mommymods.feature.JawbusFinisherHelper
 import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.MediaPlayer
@@ -23,6 +23,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         HIDE_LINE("Hide Fishing Line", true),
         LOUDER_CATCH("LouderCatch", true),
         PARTY_HELPER("FishingPartyHelper", true),
+        MM_PARTY("MM Party", true),
         JAWBUS_FINISHER("Jawbus Finisher", true),
         JAWBUS_FINDER("Jawbus Finder", true),
         RARE_SCREENSHOTS("Rare Screenshots", true),
@@ -34,6 +35,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             HIDE_LINE -> ModConfig.values.hideFishingLine
             LOUDER_CATCH -> ModConfig.values.louderCatch
             PARTY_HELPER -> ModConfig.values.fishingPartyHelper
+            MM_PARTY -> ModConfig.values.fishingPartyHelper && ModConfig.values.partyReadinessHud
             JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
             RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots
@@ -47,6 +49,10 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 HIDE_LINE -> ModConfig.values.hideFishingLine = value
                 LOUDER_CATCH -> ModConfig.values.louderCatch = value
                 PARTY_HELPER -> ModConfig.values.fishingPartyHelper = value
+                MM_PARTY -> {
+                    ModConfig.values.partyReadinessHud = value
+                    if (value) ModConfig.values.fishingPartyHelper = true
+                }
                 JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled = value
                 JAWBUS_FINDER -> ModConfig.values.jawbusFinder = value
                 RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots = value
@@ -71,6 +77,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 FeatureEntry.HIDE_LINE,
                 FeatureEntry.LOUDER_CATCH,
                 FeatureEntry.PARTY_HELPER,
+                FeatureEntry.MM_PARTY,
                 FeatureEntry.JAWBUS_FINISHER,
                 FeatureEntry.JAWBUS_FINDER,
             ),
@@ -191,6 +198,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             FeatureEntry.HIDE_LINE -> drawHideLineWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.LOUDER_CATCH -> drawLouderCatchWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.PARTY_HELPER -> drawPartyHelperWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.MM_PARTY -> drawMmPartyWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINISHER -> drawJawbusFinisherWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.RARE_SCREENSHOTS -> drawRareScreenshotsWindow(graphics, windowWidth, mouseX, mouseY)
@@ -202,7 +210,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun drawHideLineWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
         drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", ModConfig.values.hideFishingLine, true, mouseX, mouseY)
-        drawValueSetting(graphics, windowY + 52, windowWidth, "Bobbers", BobberVisibility.current().label, mouseX, mouseY)
     }
 
     private fun drawLouderCatchWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -215,10 +222,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun drawPartyHelperWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
         drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", ModConfig.values.fishingPartyHelper, true, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 52, windowWidth, "Party Sidebar HUD", ModConfig.values.partyReadinessHud, ModConfig.values.fishingPartyHelper, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 74, windowWidth, "Auto Kick", ModConfig.values.autoKick, true, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 96, windowWidth, "No Looting V", ModConfig.values.kickNoLootingV, ModConfig.values.autoKick, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 118, windowWidth, "Can't Jawbus", ModConfig.values.kickCantJawbus, ModConfig.values.autoKick, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 52, windowWidth, "Auto Kick", ModConfig.values.autoKick, true, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 74, windowWidth, "No Looting V", ModConfig.values.kickNoLootingV, ModConfig.values.autoKick, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 96, windowWidth, "Can't Jawbus", ModConfig.values.kickCantJawbus, ModConfig.values.autoKick, mouseX, mouseY)
+    }
+
+    private fun drawMmPartyWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", FeatureEntry.MM_PARTY.enabled(), true, mouseX, mouseY)
+        drawActionSetting(graphics, windowY + 52, windowWidth, "Party Data", "REFRESH", mouseX, mouseY)
     }
 
     private fun drawJawbusFinisherWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -428,7 +439,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         when (feature) {
             FeatureEntry.HIDE_LINE -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.hideFishingLine = !ModConfig.values.hideFishingLine
-                in (windowY + 52)..(windowY + 71) -> BobberVisibility.cycle()
                 else -> return false
             }
             FeatureEntry.LOUDER_CATCH -> when (mouseY) {
@@ -447,16 +457,18 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             }
             FeatureEntry.PARTY_HELPER -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.fishingPartyHelper = !ModConfig.values.fishingPartyHelper
-                in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.fishingPartyHelper) {
-                    ModConfig.values.partyReadinessHud = !ModConfig.values.partyReadinessHud
-                } else return false
-                in (windowY + 74)..(windowY + 93) -> ModConfig.values.autoKick = !ModConfig.values.autoKick
-                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.autoKick) {
+                in (windowY + 52)..(windowY + 71) -> ModConfig.values.autoKick = !ModConfig.values.autoKick
+                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.autoKick) {
                     ModConfig.values.kickNoLootingV = !ModConfig.values.kickNoLootingV
                 } else return false
-                in (windowY + 118)..(windowY + 137) -> if (ModConfig.values.autoKick) {
+                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.autoKick) {
                     ModConfig.values.kickCantJawbus = !ModConfig.values.kickCantJawbus
                 } else return false
+                else -> return false
+            }
+            FeatureEntry.MM_PARTY -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> FeatureEntry.MM_PARTY.setEnabled(!FeatureEntry.MM_PARTY.enabled())
+                in (windowY + 52)..(windowY + 71) -> FishingPartyHelper.refreshPartyReadiness(force = true)
                 else -> return false
             }
             FeatureEntry.JAWBUS_FINISHER -> when (mouseY) {
@@ -641,14 +653,15 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun windowSize(feature: FeatureEntry): Pair<Int, Int> = when (feature) {
         FeatureEntry.LOUDER_CATCH -> 230 to 142
-        FeatureEntry.PARTY_HELPER -> 230 to 142
+        FeatureEntry.PARTY_HELPER -> 230 to 120
+        FeatureEntry.MM_PARTY -> 230 to 76
         FeatureEntry.JAWBUS_FINISHER -> 310 to 142
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
         FeatureEntry.RARE_SCREENSHOTS -> 230 to 120
         FeatureEntry.MEDIA_PLAYER -> 230 to 142
         FeatureEntry.PARTY_COMMANDS -> 250 to (54 + PartyCommands.definitions.size * 44)
         FeatureEntry.CLICK_GUI -> 230 to 142
-        FeatureEntry.HIDE_LINE -> 230 to 76
+        FeatureEntry.HIDE_LINE -> 230 to 54
     }
 
     override fun onClose() {

@@ -5,7 +5,6 @@ import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.config.PartyCommandSetting
 import com.zytrm.mommymods.core.Chat
 import com.zytrm.mommymods.core.GameContext
-import com.zytrm.mommymods.model.FishingReadiness
 import com.zytrm.mommymods.network.HypixelProfileClient
 import net.minecraft.client.Minecraft
 import java.util.concurrent.CompletableFuture
@@ -199,7 +198,7 @@ object LootingVPartyCheck {
         val minecraft = Minecraft.getInstance()
         pendingPartyOutput = null
         val localName = minecraft.user.name
-        val localResult = Result(localName, LootingVScanner.localHotbar(minecraft))
+        val localResult = Result(localName, LootingVScanner.localInventory(minecraft)?.lootingVWeapons)
         val snapshot = PartyState.snapshot()
         val check = ActiveCheck(
             token = ++nextToken,
@@ -217,21 +216,18 @@ object LootingVPartyCheck {
             return
         }
 
-        val connection = minecraft.connection
-        if (connection == null) {
+        if (minecraft.connection == null) {
             finishLocal(check, "not connected")
             return
         }
-        runCatching { connection.sendCommand("party list") }
-            .onFailure {
-                MommyMods.logger.warn("Could not request the current party list", it)
-                beginMemberChecks(
-                    check,
-                    snapshot.members,
-                    sendToParty = snapshot.inParty,
-                    fallbackNote = "party refresh unavailable",
-                )
-            }
+        if (!PartyState.requestRefresh(minecraft, force = true)) {
+            beginMemberChecks(
+                check,
+                snapshot.members,
+                sendToParty = snapshot.inParty,
+                fallbackNote = "party refresh unavailable",
+            )
+        }
     }
 
     fun onTick() {
@@ -254,7 +250,7 @@ object LootingVPartyCheck {
     fun isAwaitingPartyRefresh(): Boolean = activeCheck?.phase == Phase.REFRESHING_PARTY
 
     internal fun canUseCachedParty(snapshot: PartyState.Snapshot): Boolean =
-        snapshot.inParty && snapshot.listComplete && snapshot.members.isNotEmpty()
+        snapshot.inParty && snapshot.listComplete && snapshot.fresh && snapshot.members.isNotEmpty()
 
     private fun tickPartyRefresh(check: ActiveCheck, now: Long) {
         if (activeCheck?.token != check.token) return
@@ -309,9 +305,9 @@ object LootingVPartyCheck {
             val future = if (name.equals(localName, ignoreCase = true)) {
                 CompletableFuture.completedFuture(check.localResult)
             } else {
-                HypixelProfileClient.inspect(name, bypassCache = true, hotbarOnly = true)
+                HypixelProfileClient.inspect(name, bypassCache = true)
                     .handle { readiness, throwable ->
-                        if (throwable == null) Result(name, readiness.lootingWeapons()) else Result(name, null)
+                        if (throwable == null) Result(name, LootingVScanner.readinessWeapons(readiness)) else Result(name, null)
                     }
             }
             PendingResult(name, future)
@@ -413,13 +409,5 @@ object LootingVPartyCheck {
             else -> "Yes (${result.weapons.joinToString(" & ")})"
         }
         return "${result.name}: $status"
-    }
-
-    private fun FishingReadiness.lootingWeapons(): List<String>? = when {
-        hasLootingV == null -> null
-        hasLootingV == false -> emptyList()
-        lootingWeapons.isNotEmpty() -> lootingWeapons
-        lootingWeapon != null -> listOf(lootingWeapon)
-        else -> emptyList()
     }
 }

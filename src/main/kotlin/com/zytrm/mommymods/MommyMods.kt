@@ -40,7 +40,9 @@ object MommyMods : ClientModInitializer {
         MediaPlayer.initialize()
 
         ClientReceiveMessageEvents.ALLOW_GAME.register { component, overlay ->
-            if (overlay || !PartyCommands.shouldHideInternalPartyRefresh(component.string)) {
+            val internalRefresh = PartyCommands.shouldHideInternalPartyRefresh(component.string) ||
+                PartyState.shouldHideInternalRefresh(component.string)
+            if (overlay || !internalRefresh) {
                 true
             } else {
                 PartyState.onMessage(component.string)
@@ -190,6 +192,7 @@ object MommyMods : ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register { minecraft ->
             LouderCatch.onTick(minecraft)
+            PartyState.onTick(minecraft)
             FishingPartyHelper.onTick(minecraft)
             JawbusFinisherHelper.onTick(minecraft)
             RareDropScreenshot.onTick(minecraft)

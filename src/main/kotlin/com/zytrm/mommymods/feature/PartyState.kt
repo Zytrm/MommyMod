@@ -1,9 +1,13 @@
 package com.zytrm.mommymods.feature
 
+import com.zytrm.mommymods.config.ModConfig
+import com.zytrm.mommymods.core.GameContext
 import net.minecraft.client.Minecraft
 import java.util.concurrent.ConcurrentHashMap
 
 object PartyState {
+    private const val REFRESH_INTERVAL_MILLIS = 75_000L
+    private const val REFRESH_RESPONSE_MILLIS = 5_000L
     private val members = ConcurrentHashMap.newKeySet<String>()
     private val displayNames = ConcurrentHashMap<String, String>()
 
@@ -19,11 +23,24 @@ object PartyState {
     @Volatile
     private var expectedMemberCount: Int? = null
 
+    @Volatile
+    private var lastUpdatedAt = 0L
+
+    @Volatile
+    private var lastListUpdatedAt = 0L
+
+    @Volatile
+    private var lastRefreshRequestAt = 0L
+
+    @Volatile
+    private var internalRefreshUntil = 0L
+
     data class Snapshot(
         val inParty: Boolean,
         val members: List<String>,
         val listGeneration: Long,
         val listComplete: Boolean,
+        val fresh: Boolean,
     )
 
     private val joinedOther = Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) joined the party\\.$")
@@ -55,6 +72,32 @@ object PartyState {
     fun onMessage(message: String) {
         applyMessage(message, localName())
     }
+
+    fun onTick(minecraft: Minecraft) {
+        val settings = ModConfig.values
+        if (!GameContext.isOnHypixel() || (!settings.fishingPartyHelper && !settings.partyCommandsEnabled)) return
+        requestRefresh(minecraft, force = false)
+    }
+
+    fun requestRefresh(minecraft: Minecraft, force: Boolean): Boolean {
+        val now = System.currentTimeMillis()
+        if (now < internalRefreshUntil) return true
+        if (!force) {
+            if (!inParty) return false
+            if (now - lastListUpdatedAt < REFRESH_INTERVAL_MILLIS) return false
+            if (now - lastRefreshRequestAt < REFRESH_INTERVAL_MILLIS) return false
+        }
+        val connection = minecraft.connection ?: return false
+        return runCatching {
+            connection.sendCommand("party list")
+            lastRefreshRequestAt = now
+            internalRefreshUntil = now + REFRESH_RESPONSE_MILLIS
+            true
+        }.getOrDefault(false)
+    }
+
+    fun shouldHideInternalRefresh(message: String): Boolean =
+        System.currentTimeMillis() < internalRefreshUntil && isPartyListResponse(message)
 
     internal fun isPartyListResponse(message: String): Boolean = message.lineSequence()
         .map(String::trim)
@@ -92,6 +135,8 @@ object PartyState {
             expectedMemberCount = match.groupValues[1].toIntOrNull()
             inParty = expectedMemberCount?.let { it > 0 } == true
             partyListGeneration++
+            lastListUpdatedAt = System.currentTimeMillis()
+            lastUpdatedAt = lastListUpdatedAt
             addLocalPlayer(localPlayer)
             return
         }
@@ -103,6 +148,7 @@ object PartyState {
             names.forEach(::addMember)
             if (role == "Leader") leader = names.firstOrNull()?.lowercase()
             addLocalPlayer(localPlayer)
+            markUpdated()
             return
         }
 
@@ -112,6 +158,7 @@ object PartyState {
             addMember(name)
             if (match.groupValues[2] == "Leader") leader = name.lowercase()
             addLocalPlayer(localPlayer)
+            markUpdated()
             return
         }
 
@@ -119,12 +166,14 @@ object PartyState {
             inParty = true
             addKnownMember(name)
             addLocalPlayer(localPlayer)
+            markUpdated()
             return
         }
         partyChat.matchEntire(message)?.groupValues?.get(1)?.let { name ->
             inParty = true
             addKnownMember(name)
             addLocalPlayer(localPlayer)
+            markUpdated()
             return
         }
         joinedSelf.matchEntire(message)?.groupValues?.get(1)?.let { name ->
@@ -133,6 +182,7 @@ object PartyState {
             leader = name.lowercase()
             addMember(name)
             addLocalPlayer(localPlayer)
+            markUpdated()
             return
         }
         if (created.matches(message)) {
@@ -141,12 +191,14 @@ object PartyState {
             leader = localPlayer?.lowercase()
             addLocalPlayer(localPlayer)
             expectedMemberCount = if (localPlayer.isNullOrBlank()) null else 1
+            markUpdated()
             return
         }
 
         removed.firstNotNullOfOrNull { it.matchEntire(message)?.groupValues?.get(1) }?.let { name ->
             removeKnownMember(name)
             if (leader.equals(name, ignoreCase = true)) leader = null
+            markUpdated()
             return
         }
 
@@ -154,12 +206,14 @@ object PartyState {
             inParty = true
             addMember(inviter)
             addLocalPlayer(localPlayer)
+            markUpdated()
         }
         transferred.matchEntire(message)?.groupValues?.get(1)?.let { newLeader ->
             inParty = true
             leader = newLeader.lowercase()
             addKnownMember(newLeader)
             addLocalPlayer(localPlayer)
+            markUpdated()
         }
     }
 
@@ -179,6 +233,7 @@ object PartyState {
             members = names,
             listGeneration = partyListGeneration,
             listComplete = inParty && expected != null && names.size >= expected,
+            fresh = inParty && System.currentTimeMillis() - maxOf(lastUpdatedAt, lastListUpdatedAt) < REFRESH_INTERVAL_MILLIS,
         )
     }
 
@@ -188,6 +243,10 @@ object PartyState {
         leader = null
         inParty = false
         expectedMemberCount = null
+        lastUpdatedAt = 0L
+        lastListUpdatedAt = 0L
+        lastRefreshRequestAt = 0L
+        internalRefreshUntil = 0L
         partyListGeneration++
     }
 
@@ -201,6 +260,7 @@ object PartyState {
         val wasKnown = members.contains(name.lowercase())
         addMember(name)
         if (!wasKnown) expectedMemberCount = expectedMemberCount?.plus(1)
+        if (!wasKnown) partyListGeneration++
     }
 
     private fun removeKnownMember(name: String) {
@@ -208,6 +268,7 @@ object PartyState {
         if (members.remove(key)) {
             displayNames.remove(key)
             expectedMemberCount = expectedMemberCount?.minus(1)?.coerceAtLeast(0)
+            partyListGeneration++
         }
     }
 
@@ -216,4 +277,8 @@ object PartyState {
     }
 
     private fun localName(): String? = Minecraft.getInstance().user.name.takeIf { it.isNotBlank() }
+
+    private fun markUpdated() {
+        lastUpdatedAt = System.currentTimeMillis()
+    }
 }

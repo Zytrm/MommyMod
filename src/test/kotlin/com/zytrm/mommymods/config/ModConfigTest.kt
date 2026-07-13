@@ -15,7 +15,6 @@ class ModConfigTest {
     @Test
     fun appliesNewFeatureDefaultsToAnExistingOlderConfig() {
         val values = MommySettings(
-            bobberVisibility = "",
             partyReadinessHud = false,
             jawbusFinisherEnabled = false,
             jawbusFinisherHealth = 0,
@@ -36,7 +35,6 @@ class ModConfigTest {
         assertTrue(values.screenshotRngDrops)
         assertTrue(values.screenshotDyesAndVials)
         assertTrue(values.screenshotRareRewards)
-        assertTrue(values.bobberVisibility == "Line Only")
         assertTrue(values.jawbusFinisherHealth == 20)
         assertTrue(values.jawbusFinisherMessage == DEFAULT_FINISHER_MESSAGE)
     }

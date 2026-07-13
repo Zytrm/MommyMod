@@ -1,5 +1,6 @@
 package com.zytrm.mommymods.feature
 
+import com.zytrm.mommymods.model.FishingReadiness
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,8 +32,43 @@ class PartyCommandsTest {
     @Test
     fun recognizesOnlyLootingFiveOnSupportedWeapons() {
         assertEquals("Hyperion" to true, LootingVScanner.classify("Heroic Hyperion\nLooting V"))
+        assertEquals("Hyperion" to true, LootingVScanner.classify("\u00a75Heroic Hyperion\n\u00a79Looting 5"))
         assertEquals("Flaming Flay" to false, LootingVScanner.classify("Flaming Flay\nLooting IV"))
         assertEquals(null, LootingVScanner.classify("Terminator\nLooting V"))
+    }
+
+    @Test
+    fun combinesBothSupportedWeaponsAcrossTheFullScan() {
+        val result = LootingVScanner.scan(
+            listOf(
+                "Hyperion" to true,
+                "Flaming Flay" to false,
+                "Flaming Flay" to true,
+            ),
+        )
+
+        assertEquals(listOf("Hyperion", "Flaming Flay"), result.validWeapons)
+        assertEquals(listOf("Hyperion", "Flaming Flay"), result.lootingVWeapons)
+        assertTrue(result.hasLootingV)
+    }
+
+    @Test
+    fun normalizesRemoteReadinessThroughTheSharedDetector() {
+        val readiness = FishingReadiness(
+            name = "Fisher",
+            profileName = "Lemon",
+            fishingLevel = 60,
+            silverTrophyHunter = true,
+            inventoryAvailable = true,
+            lootingWeapon = "Flaming Flay",
+            lootingWeapons = listOf("Hyperion", "Flaming Flay", "Hyperion"),
+            lootingV = true,
+            bloodshotBelt = true,
+        )
+
+        assertEquals(listOf("Hyperion", "Flaming Flay"), LootingVScanner.readinessWeapons(readiness))
+        assertEquals(emptyList(), LootingVScanner.readinessWeapons(readiness.copy(lootingV = false)))
+        assertEquals(null, LootingVScanner.readinessWeapons(readiness.copy(lootingV = null)))
     }
 
     @Test
@@ -58,6 +94,7 @@ class PartyCommandsTest {
         val snapshot = PartyState.snapshot()
         assertTrue(snapshot.inParty)
         assertTrue(snapshot.listComplete)
+        assertTrue(snapshot.fresh)
         assertEquals(setOf("LocalPlayer", "Friend_One"), snapshot.members.toSet())
         PartyState.reset()
     }
