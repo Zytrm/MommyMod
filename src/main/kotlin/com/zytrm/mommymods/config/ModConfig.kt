@@ -5,8 +5,14 @@ import com.zytrm.mommymods.MommyMods
 import net.fabricmc.loader.api.FabricLoader
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.UUID
 
 const val DEFAULT_LOOTING_V_MESSAGE = "Please do not kill my Jawbus unless you have Looting V."
+
+internal fun isInstallationId(value: String): Boolean = runCatching {
+    val uuid = UUID.fromString(value)
+    uuid.variant() == 2 && uuid.version() in 1..5 && uuid.toString().equals(value, ignoreCase = true)
+}.getOrDefault(false)
 
 data class PartyCommandSetting(
     var enabled: Boolean = true,
@@ -14,6 +20,7 @@ data class PartyCommandSetting(
 )
 
 data class MommySettings(
+    var installationId: String = "",
     var hideFishingLine: Boolean = true,
     var louderCatch: Boolean = true,
     var catchSound: String = "Experience",
@@ -56,6 +63,7 @@ object ModConfig {
             else Files.newBufferedReader(path).use { gson.fromJson(it, MommySettings::class.java) ?: MommySettings() }
         }.onFailure { MommyMods.logger.warn("Could not load configuration", it) }
             .getOrElse { MommySettings() }
+        if (!isInstallationId(values.installationId)) values.installationId = UUID.randomUUID().toString()
         if (values.lootingVMessage.isBlank()) values.lootingVMessage = DEFAULT_LOOTING_V_MESSAGE
         values.mediaVolume = values.mediaVolume.coerceIn(0f, 1f)
         if (values.clickGuiSorting !in setOf("A-Z Sorting", "Width Sorting", "No Sorting")) {

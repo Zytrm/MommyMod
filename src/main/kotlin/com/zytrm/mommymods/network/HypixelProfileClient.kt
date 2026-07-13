@@ -2,7 +2,10 @@ package com.zytrm.mommymods.network
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.zytrm.mommymods.MommyMods
+import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.model.FishingReadiness
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
 import java.net.URI
 import java.net.URLEncoder
@@ -17,8 +20,13 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 object HypixelProfileClient {
-    private const val BASE_ENDPOINT = "https://mommymods-api.zapk32.workers.dev"
+    private const val BASE_ENDPOINT = "https://mommymods-gateway.zapk32.workers.dev"
     private const val CACHE_MILLIS = 6 * 60 * 60 * 1000L
+    private val modVersion by lazy {
+        FabricLoader.getInstance().getModContainer(MommyMods.MOD_ID)
+            .orElseThrow { IllegalStateException("MommyMods metadata is unavailable") }
+            .metadata.version.friendlyString
+    }
     private val client = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(8))
         .followRedirects(HttpClient.Redirect.NORMAL)
@@ -30,6 +38,7 @@ object HypixelProfileClient {
         DATA_BLOCKED,
         TIMEOUT,
         RATE_LIMITED,
+        CLIENT_UPDATE_REQUIRED,
         PARSE_FAILURE,
         SERVICE_ERROR,
         NETWORK_ERROR,
@@ -85,7 +94,9 @@ object HypixelProfileClient {
                 HttpRequest.newBuilder(URI("$BASE_ENDPOINT/$endpoint/readiness/$encodedUuid"))
                     .timeout(Duration.ofSeconds(15))
                     .header("Accept", "application/json")
-                    .header("User-Agent", "MommyMods")
+                    .header("User-Agent", "MommyMods/$modVersion")
+                    .header("X-MommyMods-Version", modVersion)
+                    .header("X-MommyMods-Install", ModConfig.values.installationId)
                     .GET()
                     .build(),
                 "backend",
@@ -110,6 +121,11 @@ object HypixelProfileClient {
                     FailureKind.RATE_LIMITED,
                     "backend",
                     "The readiness service rate limit was reached.",
+                )
+                426 -> throw LookupException(
+                    FailureKind.CLIENT_UPDATE_REQUIRED,
+                    "backend",
+                    "This MommyMods version is no longer supported by the readiness service.",
                 )
                 504, 522, 524 -> throw LookupException(
                     FailureKind.TIMEOUT,
