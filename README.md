@@ -29,7 +29,8 @@
 - **FishingPartyHelper** — checks Fishing 45, Silver Trophy Hunter, Looting V, Bloodshot belt, and Jawbus eligibility when players join.
 - **Jawbus Finder** — shows a compact alert only when a non-party player dies to Lord Jawbus in your lobby.
 - **Looting V Message** — sends one configurable reminder when you spawn a Jawbus.
-- **Aura Player** — plays YouTube searches and links, SoundCloud, supported direct media URLs, playlists, and local files inside Minecraft.
+- **Aura Player** — plays YouTube searches and links, SoundCloud, supported direct media URLs, playlists, and local files inside Minecraft without an account.
+- **ClickGUI** — controls the menu accent, feature sorting, click sounds, HUD positions, and UI reset tools.
 
 ## Configuration
 
@@ -43,7 +44,7 @@ Open the compact MommyMods menu with any of these commands:
 
 Left-click a feature to toggle it. Right-click a configurable feature to open its options. Settings are saved to `config/mommymods.json`.
 
-Aura Player is in the compact **Misc** category. Right-click it to control volume, playlist autoplay, the now-playing HUD, and optional YouTube sign-in. Use its player screen or these commands:
+Aura Player is in the compact **Misc** category. Right-click it to control volume, playlist autoplay, and the now-playing HUD. It uses public media playback and never asks for an account. Use its player screen or these commands:
 
 ```text
 /mmplay
@@ -53,8 +54,9 @@ Aura Player is in the compact **Misc** category. Right-click it to control volum
 /mmmedia shuffle|repeat
 /mmmedia seek <seconds>
 /mmmedia volume <0-100>
-/mmmedia signin
 ```
+
+ClickGUI is always available under **Dev**. Right-click it to change the accent and sorting, toggle click sounds, open the draggable HUD editor, or reset the UI settings.
 
 Spotify links open in the desktop app or browser because Spotify does not provide playable audio streams to the embedded player.
 
@@ -83,7 +85,6 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 - The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
 - Jawbus Finder matches the exact skull-prefixed `☠ <player> was killed by Lord Jawbus.` line. Party joins, departures, transfers, party chat, and `/party list` role lines keep the exclusion list current.
 - Jawbus alerts and chat reminders use narrow Hypixel messages with per-event cooldowns to avoid duplicates.
-- The optional YouTube sign-in refresh token is stored only in the local `config/mommymods.json` file.
 
 </details>
 

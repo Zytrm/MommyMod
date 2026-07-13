@@ -23,7 +23,8 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         PARTY_HELPER("FishingPartyHelper", true),
         LOOTING_MESSAGE("Looting V Message", true),
         JAWBUS_FINDER("Jawbus Finder", true),
-        MEDIA_PLAYER("Aura Player", true);
+        MEDIA_PLAYER("Aura Player", true),
+        CLICK_GUI("ClickGUI", true);
 
         fun enabled(): Boolean = when (this) {
             HIDE_LINE -> ModConfig.values.hideFishingLine
@@ -32,6 +33,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
             MEDIA_PLAYER -> ModConfig.values.mediaPlayer
+            CLICK_GUI -> true
         }
 
         fun setEnabled(value: Boolean) {
@@ -45,6 +47,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                     ModConfig.values.mediaPlayer = value
                     MediaPlayer.onEnabledChanged(value)
                 }
+                CLICK_GUI -> Unit
             }
         }
     }
@@ -65,6 +68,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             ),
         ),
         FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER)),
+        FeatureCategory("DEV", listOf(FeatureEntry.CLICK_GUI)),
     )
 
     private var openFeature: FeatureEntry? = null
@@ -76,13 +80,13 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
     private var draggingSlider: DraggingSlider? = null
     private lateinit var lootingMessageBox: EditBox
 
-    private val accent = 0xFFFF4F91.toInt()
-    private val accentBright = 0xFFFF8BB7.toInt()
-    private val accentMuted = 0xFF9E315B.toInt()
+    private val accent: Int get() = UiStyle.accent
+    private val accentBright: Int get() = UiStyle.accentBright
+    private val accentMuted: Int get() = UiStyle.accentMuted
     private val panelBackground = 0xD9100C12.toInt()
     private val rowBackground = 0xC70A080B.toInt()
     private val rowHover = 0xE12A1722.toInt()
-    private val rowEnabled = 0xD18F274F.toInt()
+    private val rowEnabled: Int get() = UiStyle.rowEnabled
     private val windowBackground = 0xF20B080D.toInt()
     private val windowInner = 0xC9161019.toInt()
     private val textColor = 0xFFFFE8F0.toInt()
@@ -116,13 +120,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         panelLayouts().forEach { panel ->
             val headerHeight = 22
             val featureHeight = 16
-            val totalHeight = headerHeight + panel.category.features.size * featureHeight
+            val features = orderedFeatures(panel.category)
+            val totalHeight = headerHeight + features.size * featureHeight
 
             graphics.fill(panel.x, panel.y, panel.x + panel.width, panel.y + totalHeight, panelBackground)
             graphics.fill(panel.x, panel.y, panel.x + panel.width, panel.y + 2, accent)
             graphics.centeredText(font, panel.category.title, panel.x + panel.width / 2, panel.y + 7, textColor)
 
-            panel.category.features.forEachIndexed { index, feature ->
+            features.forEachIndexed { index, feature ->
                 val rowY = panel.y + headerHeight + index * featureHeight
                 val hovered = mouseX in panel.x until (panel.x + panel.width) && mouseY in rowY until (rowY + featureHeight)
                 val enabled = feature.enabled()
@@ -166,6 +171,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             FeatureEntry.LOOTING_MESSAGE -> drawLootingMessageWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.MEDIA_PLAYER -> drawMediaPlayerWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.CLICK_GUI -> drawClickGuiWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.HIDE_LINE -> Unit
         }
     }
@@ -234,15 +240,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             "${(ModConfig.values.mediaVolume * 100).roundToInt()}%",
         )
         drawActionSetting(graphics, windowY + 118, windowWidth, "Player", "OPEN", mouseX, mouseY)
-        drawActionSetting(
-            graphics,
-            windowY + 140,
-            windowWidth,
-            "YouTube",
-            if (MediaPlayer.isYoutubeAuthorized()) "SIGNED" else "SIGN IN",
-            mouseX,
-            mouseY,
-        )
+    }
+
+    private fun drawClickGuiWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Click Sound", ModConfig.values.clickGuiSound, true, mouseX, mouseY)
+        drawValueSetting(graphics, windowY + 52, windowWidth, "Accent Color", UiStyle.accentName, mouseX, mouseY)
+        drawValueSetting(graphics, windowY + 74, windowWidth, "Sorting", ModConfig.values.clickGuiSorting, mouseX, mouseY)
+        drawActionSetting(graphics, windowY + 96, windowWidth, "HUD Editor", "OPEN", mouseX, mouseY)
+        drawActionSetting(graphics, windowY + 118, windowWidth, "Settings", "RESET", mouseX, mouseY)
     }
 
     private fun drawToggleSetting(
@@ -328,6 +333,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             if (event.button() == 0 && mouseX in (windowX + windowWidth - 21) until (windowX + windowWidth - 5) &&
                 mouseY in (windowY + 4) until (windowY + 20)
             ) {
+                UiStyle.playClick(0.9f)
                 closeFeatureWindow()
                 return true
             }
@@ -337,19 +343,30 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 windowDragY = mouseY - windowY
                 return true
             }
-            if (event.button() == 0 && handleWindowClick(feature, mouseX, mouseY)) return true
+            if (event.button() == 0 && handleWindowClick(feature, mouseX, mouseY)) {
+                UiStyle.playClick()
+                return true
+            }
             return super.mouseClicked(event, isDoubleClick)
         }
 
         featureAt(mouseX, mouseY)?.let { feature ->
             when (event.button()) {
                 0 -> {
-                    feature.setEnabled(!feature.enabled())
+                    if (feature == FeatureEntry.CLICK_GUI) {
+                        openFeatureWindow(feature)
+                    } else {
+                        feature.setEnabled(!feature.enabled())
+                    }
                     ModConfig.save()
+                    UiStyle.playClick()
                     return true
                 }
                 1 -> {
-                    if (feature.hasOptions) openFeatureWindow(feature)
+                    if (feature.hasOptions) {
+                        openFeatureWindow(feature)
+                        UiStyle.playClick(1.1f)
+                    }
                     return true
                 }
             }
@@ -416,9 +433,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 in (windowY + 118)..(windowY + 137) -> if (ModConfig.values.mediaPlayer) {
                     MediaPlayer.openScreen(this)
                 } else return false
-                in (windowY + 140)..(windowY + 159) -> if (ModConfig.values.mediaPlayer) {
-                    MediaPlayer.startYoutubeSignIn()
-                } else return false
+                else -> return false
+            }
+            FeatureEntry.CLICK_GUI -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> ModConfig.values.clickGuiSound = !ModConfig.values.clickGuiSound
+                in (windowY + 52)..(windowY + 71) -> UiStyle.cycleAccent()
+                in (windowY + 74)..(windowY + 93) -> UiStyle.cycleSorting()
+                in (windowY + 96)..(windowY + 115) -> minecraft.setScreen(HudEditorScreen(this))
+                in (windowY + 118)..(windowY + 137) -> UiStyle.reset()
                 else -> return false
             }
             FeatureEntry.HIDE_LINE -> return false
@@ -497,7 +519,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun featureAt(mouseX: Int, mouseY: Int): FeatureEntry? {
         panelLayouts().forEach { panel ->
-            panel.category.features.forEachIndexed { index, feature ->
+            orderedFeatures(panel.category).forEachIndexed { index, feature ->
                 val y = panel.y + 22 + index * 16
                 if (mouseX in panel.x until (panel.x + panel.width) && mouseY in y until (y + 16)) return feature
             }
@@ -515,12 +537,19 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         }
     }
 
+    private fun orderedFeatures(category: FeatureCategory): List<FeatureEntry> = when (ModConfig.values.clickGuiSorting) {
+        "A-Z Sorting" -> category.features.sortedBy { it.title.lowercase() }
+        "Width Sorting" -> category.features.sortedByDescending { font.width(it.title) }
+        else -> category.features
+    }
+
     private fun windowSize(feature: FeatureEntry): Pair<Int, Int> = when (feature) {
         FeatureEntry.LOUDER_CATCH -> 230 to 142
         FeatureEntry.PARTY_HELPER -> 230 to 120
         FeatureEntry.LOOTING_MESSAGE -> 300 to 98
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
-        FeatureEntry.MEDIA_PLAYER -> 230 to 164
+        FeatureEntry.MEDIA_PLAYER -> 230 to 142
+        FeatureEntry.CLICK_GUI -> 230 to 142
         FeatureEntry.HIDE_LINE -> 210 to 70
     }
 

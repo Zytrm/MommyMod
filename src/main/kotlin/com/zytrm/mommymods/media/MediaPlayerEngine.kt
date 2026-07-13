@@ -24,8 +24,6 @@ import javax.sound.sampled.SourceDataLine
 class MediaPlayerEngine(
     initialVolume: Float,
     private val autoplay: () -> Boolean,
-    private val savedRefreshToken: () -> String?,
-    private val saveRefreshToken: (String?) -> Unit,
     private val onTrackStart: (MediaInfo) -> Unit,
     private val onError: (String) -> Unit,
 ) {
@@ -42,9 +40,6 @@ class MediaPlayerEngine(
     private val scheduler = MediaTrackScheduler(player, onTrackStart, onError)
     private val outputExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "MommyMods-MediaOutput").apply { isDaemon = true }
-    }
-    private val authExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "MommyMods-MediaAuth").apply { isDaemon = true }
     }
     private val running = AtomicBoolean(true)
     private val outputStarted = AtomicBoolean(false)
@@ -66,7 +61,6 @@ class MediaPlayerEngine(
         manager.configuration.outputFormat = Pcm16AudioDataFormat(2, SAMPLE_RATE.toInt(), FRAME_SAMPLES, false)
         player.addListener(scheduler)
         player.volume = (volume * 100f).toInt()
-        restoreYoutubeSession()
     }
 
     fun loadAndPlay(identifier: String) {
@@ -180,74 +174,12 @@ class MediaPlayerEngine(
         if (track.isSeekable) track.position = positionMs.coerceIn(0L, track.info.length.coerceAtLeast(0L))
     }
 
-    fun isYoutubeAuthorized(): Boolean = runCatching { youtube.oauth2Handler.hasAccessToken() }.getOrDefault(false)
-
-    fun startYoutubeAuthorization(
-        onCode: (verificationUrl: String, userCode: String) -> Unit,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit,
-    ) {
-        authExecutor.execute {
-            runCatching {
-                val handler = youtube.oauth2Handler
-                val device = handler.fetchDeviceCode()
-                val verificationUrl = device.get("verification_url").text()
-                val userCode = device.get("user_code").text()
-                val deviceCode = device.get("device_code").text()
-                val expiresIn = device.get("expires_in").asLong(300L)
-                var interval = device.get("interval").asLong(5L).coerceAtLeast(1L)
-                if (verificationUrl.isNullOrBlank() || userCode.isNullOrBlank() || deviceCode.isNullOrBlank()) {
-                    error("YouTube did not return a sign-in code.")
-                }
-                onCode(verificationUrl, userCode)
-
-                val deadline = System.currentTimeMillis() + expiresIn * 1_000L
-                while (System.currentTimeMillis() < deadline && running.get()) {
-                    Thread.sleep(interval * 1_000L)
-                    val tokenData = handler.fetchRefreshToken(deviceCode)
-                    when (val error = tokenData.get("error").text()) {
-                        "authorization_pending" -> continue
-                        "slow_down" -> {
-                            interval += 2L
-                            continue
-                        }
-                        null -> Unit
-                        else -> throw IllegalStateException("YouTube sign-in failed: $error")
-                    }
-                    val refreshToken = tokenData.get("refresh_token").text()
-                    if (!refreshToken.isNullOrBlank()) {
-                        youtube.useOauth2(refreshToken, false)
-                        saveRefreshToken(refreshToken)
-                        onSuccess()
-                        return@execute
-                    }
-                }
-                error("YouTube sign-in timed out.")
-            }.onFailure { exception ->
-                MommyMods.logger.warn("YouTube sign-in failed", exception)
-                onFailure(exception.message ?: "YouTube sign-in failed.")
-            }
-        }
-    }
-
     fun shutdown() {
         if (!running.getAndSet(false)) return
         scheduler.stop()
         outputExecutor.shutdownNow()
-        authExecutor.shutdownNow()
         player.destroy()
         manager.shutdown()
-    }
-
-    private fun restoreYoutubeSession() {
-        val token = savedRefreshToken()?.takeIf { it.isNotBlank() } ?: return
-        authExecutor.execute {
-            runCatching { youtube.useOauth2(token, false) }
-                .onFailure {
-                    MommyMods.logger.warn("Saved YouTube session is no longer valid")
-                    saveRefreshToken(null)
-                }
-        }
     }
 
     private fun ensureOutput() {

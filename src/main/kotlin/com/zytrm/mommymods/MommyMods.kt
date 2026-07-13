@@ -114,10 +114,6 @@ object MommyMods : ClientModInitializer {
                                 1
                             }),
                     )
-                    .then(ClientCommands.literal("signin").executes {
-                        MediaPlayer.startYoutubeSignIn()
-                        1
-                    })
                     .then(
                         ClientCommands.literal("volume")
                             .then(ClientCommands.argument("percent", IntegerArgumentType.integer(0, 100)).executes { context ->

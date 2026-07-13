@@ -2,6 +2,9 @@ package com.zytrm.mommymods.feature
 
 import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.core.GameContext
+import com.zytrm.mommymods.ui.HudElement
+import com.zytrm.mommymods.ui.HudLayout
+import com.zytrm.mommymods.ui.UiStyle
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import kotlin.math.roundToInt
@@ -51,11 +54,10 @@ object JawbusFinder {
         val minecraft = Minecraft.getInstance()
         val width = 236
         val height = 42
-        val x = (graphics.guiWidth() - width) / 2
-        val y = 18
+        val (x, y) = HudLayout.position(HudElement.JAWBUS, width, height, graphics.guiWidth(), graphics.guiHeight())
         val alpha = if (remaining < 600L) (remaining / 600.0 * 235).roundToInt() else 235
         val background = (alpha shl 24) or 0x231329
-        val border = (alpha shl 24) or 0xF0659B
+        val border = UiStyle.withAlpha(UiStyle.accent, alpha)
         val text = (alpha shl 24) or 0xFFD8E8
         val secondary = (alpha shl 24) or 0xC7A7D4
 
