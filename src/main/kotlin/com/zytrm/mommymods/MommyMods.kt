@@ -38,6 +38,15 @@ object MommyMods : ClientModInitializer {
         PartyCommands.ensureSettings()
         MediaPlayer.initialize()
 
+        ClientReceiveMessageEvents.ALLOW_GAME.register { component, overlay ->
+            if (overlay || !PartyCommands.shouldHideInternalPartyRefresh(component.string)) {
+                true
+            } else {
+                PartyState.onMessage(component.string)
+                false
+            }
+        }
+
         ClientReceiveMessageEvents.GAME.register { component, overlay ->
             if (!overlay) {
                 val message = component.string
