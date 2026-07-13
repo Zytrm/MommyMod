@@ -1,5 +1,7 @@
 package com.zytrm.mommymods
 
+import com.mojang.brigadier.arguments.IntegerArgumentType
+import com.mojang.brigadier.arguments.LongArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.core.Chat
@@ -7,6 +9,7 @@ import com.zytrm.mommymods.feature.FishingPartyHelper
 import com.zytrm.mommymods.feature.JawbusFinder
 import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.LootingVMessage
+import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.feature.PartyState
 import com.zytrm.mommymods.ui.MommyConfigScreen
 import net.fabricmc.api.ClientModInitializer
@@ -15,6 +18,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.Minecraft
 import org.slf4j.LoggerFactory
 
@@ -30,6 +34,7 @@ object MommyMods : ClientModInitializer {
 
     override fun onInitializeClient() {
         ModConfig.load()
+        MediaPlayer.initialize()
 
         ClientReceiveMessageEvents.GAME.register { component, overlay ->
             if (!overlay) {
@@ -48,6 +53,79 @@ object MommyMods : ClientModInitializer {
             }
             dispatcher.register(ClientCommands.literal("mommymods").executes { openScreen() })
             dispatcher.register(ClientCommands.literal("mm").executes { openScreen() })
+            dispatcher.register(
+                ClientCommands.literal("mmplay")
+                    .executes {
+                        MediaPlayer.openScreen(Minecraft.getInstance().screen)
+                        1
+                    }
+                    .then(
+                        ClientCommands.argument("query", StringArgumentType.greedyString()).executes { context ->
+                            MediaPlayer.play(StringArgumentType.getString(context, "query"))
+                            1
+                        },
+                    ),
+            )
+            dispatcher.register(
+                ClientCommands.literal("mmmedia")
+                    .executes {
+                        MediaPlayer.openScreen(Minecraft.getInstance().screen)
+                        1
+                    }
+                    .then(ClientCommands.literal("open").executes {
+                        MediaPlayer.openScreen(Minecraft.getInstance().screen)
+                        1
+                    })
+                    .then(
+                        ClientCommands.literal("play")
+                            .then(ClientCommands.argument("query", StringArgumentType.greedyString()).executes { context ->
+                                MediaPlayer.play(StringArgumentType.getString(context, "query"))
+                                1
+                            }),
+                    )
+                    .then(ClientCommands.literal("pause").executes {
+                        MediaPlayer.togglePause()
+                        1
+                    })
+                    .then(ClientCommands.literal("next").executes {
+                        MediaPlayer.next()
+                        1
+                    })
+                    .then(ClientCommands.literal("previous").executes {
+                        MediaPlayer.previous()
+                        1
+                    })
+                    .then(ClientCommands.literal("stop").executes {
+                        MediaPlayer.stop()
+                        1
+                    })
+                    .then(ClientCommands.literal("shuffle").executes {
+                        MediaPlayer.toggleShuffle()
+                        1
+                    })
+                    .then(ClientCommands.literal("repeat").executes {
+                        MediaPlayer.cycleRepeat()
+                        1
+                    })
+                    .then(
+                        ClientCommands.literal("seek")
+                            .then(ClientCommands.argument("seconds", LongArgumentType.longArg(0L)).executes { context ->
+                                MediaPlayer.seekTo(LongArgumentType.getLong(context, "seconds") * 1_000L)
+                                1
+                            }),
+                    )
+                    .then(ClientCommands.literal("signin").executes {
+                        MediaPlayer.startYoutubeSignIn()
+                        1
+                    })
+                    .then(
+                        ClientCommands.literal("volume")
+                            .then(ClientCommands.argument("percent", IntegerArgumentType.integer(0, 100)).executes { context ->
+                                MediaPlayer.setVolume(IntegerArgumentType.getInteger(context, "percent") / 100f)
+                                1
+                            }),
+                    ),
+            )
             dispatcher.register(ClientCommands.literal("mmcatchdebug").executes {
                 val enabled = LouderCatch.toggleDiagnostics()
                 Chat.info("LouderCatch diagnostics ${if (enabled) "enabled" else "disabled"}.")
@@ -100,7 +178,15 @@ object MommyMods : ClientModInitializer {
             }
         }
 
-        ClientLifecycleEvents.CLIENT_STOPPING.register { ModConfig.save() }
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
+            PartyState.reset()
+            JawbusFinder.reset()
+        }
+
+        ClientLifecycleEvents.CLIENT_STOPPING.register {
+            MediaPlayer.shutdown()
+            ModConfig.save()
+        }
         logger.info("MommyMods initialized")
     }
 }
