@@ -1,6 +1,7 @@
 package com.zytrm.mommymods.config
 
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import com.zytrm.mommymods.MommyMods
 import net.fabricmc.loader.api.FabricLoader
 import java.nio.file.Files
@@ -13,6 +14,20 @@ internal fun isInstallationId(value: String): Boolean = runCatching {
     val uuid = UUID.fromString(value)
     uuid.variant() == 2 && uuid.version() in 1..5 && uuid.toString().equals(value, ignoreCase = true)
 }.getOrDefault(false)
+
+internal fun applyMissingSettingDefaults(values: MommySettings, existingKeys: Set<String>) {
+    if ("bobberVisibility" !in existingKeys) values.bobberVisibility = "Line Only"
+    if ("partyReadinessHud" !in existingKeys) values.partyReadinessHud = true
+    if ("jawbusFinisherEnabled" !in existingKeys) values.jawbusFinisherEnabled = true
+    if ("jawbusFinisherHealth" !in existingKeys) values.jawbusFinisherHealth = 20
+    if ("jawbusFinisherPartyMessage" !in existingKeys) values.jawbusFinisherPartyMessage = true
+    if ("jawbusFinisherMessage" !in existingKeys) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
+    if ("lastJawbusHookedAt" !in existingKeys) values.lastJawbusHookedAt = 0L
+    if ("rareDropScreenshots" !in existingKeys) values.rareDropScreenshots = true
+    if ("screenshotRngDrops" !in existingKeys) values.screenshotRngDrops = true
+    if ("screenshotDyesAndVials" !in existingKeys) values.screenshotDyesAndVials = true
+    if ("screenshotRareRewards" !in existingKeys) values.screenshotRareRewards = true
+}
 
 data class PartyCommandSetting(
     var enabled: Boolean = true,
@@ -67,16 +82,22 @@ object ModConfig {
         private set
 
     fun load() {
+        var existingKeys: Set<String>? = null
         values = runCatching {
             if (!Files.exists(path)) MommySettings()
-            else Files.newBufferedReader(path).use { gson.fromJson(it, MommySettings::class.java) ?: MommySettings() }
+            else Files.newBufferedReader(path).use { reader ->
+                val root = JsonParser.parseReader(reader).asJsonObject
+                existingKeys = root.keySet()
+                gson.fromJson(root, MommySettings::class.java) ?: MommySettings()
+            }
         }.onFailure { MommyMods.logger.warn("Could not load configuration", it) }
             .getOrElse { MommySettings() }
+        existingKeys?.let { applyMissingSettingDefaults(values, it) }
         if (!isInstallationId(values.installationId)) values.installationId = UUID.randomUUID().toString()
         if (values.bobberVisibility !in setOf("Line Only", "Hide Others", "Hide All")) {
             values.bobberVisibility = "Line Only"
         }
-        if (values.jawbusFinisherMessage.isBlank()) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
+        if (values.jawbusFinisherMessage.isNullOrBlank()) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
         values.jawbusFinisherHealth = values.jawbusFinisherHealth.coerceIn(5, 50)
         values.lastJawbusHookedAt = values.lastJawbusHookedAt.coerceAtLeast(0L)
         values.mediaVolume = values.mediaVolume.coerceIn(0f, 1f)

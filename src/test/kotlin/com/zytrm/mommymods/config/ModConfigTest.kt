@@ -11,4 +11,33 @@ class ModConfigTest {
         assertFalse(isInstallationId("shared-client-secret"))
         assertFalse(isInstallationId("2f77bf75a7014af49704bc776b229bbd"))
     }
+
+    @Test
+    fun appliesNewFeatureDefaultsToAnExistingOlderConfig() {
+        val values = MommySettings(
+            bobberVisibility = "",
+            partyReadinessHud = false,
+            jawbusFinisherEnabled = false,
+            jawbusFinisherHealth = 0,
+            jawbusFinisherPartyMessage = false,
+            jawbusFinisherMessage = "",
+            rareDropScreenshots = false,
+            screenshotRngDrops = false,
+            screenshotDyesAndVials = false,
+            screenshotRareRewards = false,
+        )
+
+        applyMissingSettingDefaults(values, setOf("hideFishingLine", "louderCatch"))
+
+        assertTrue(values.partyReadinessHud)
+        assertTrue(values.jawbusFinisherEnabled)
+        assertTrue(values.jawbusFinisherPartyMessage)
+        assertTrue(values.rareDropScreenshots)
+        assertTrue(values.screenshotRngDrops)
+        assertTrue(values.screenshotDyesAndVials)
+        assertTrue(values.screenshotRareRewards)
+        assertTrue(values.bobberVisibility == "Line Only")
+        assertTrue(values.jawbusFinisherHealth == 20)
+        assertTrue(values.jawbusFinisherMessage == DEFAULT_FINISHER_MESSAGE)
+    }
 }
