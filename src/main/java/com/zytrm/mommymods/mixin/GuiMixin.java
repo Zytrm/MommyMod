@@ -1,6 +1,7 @@
 package com.zytrm.mommymods.mixin;
 
 import com.zytrm.mommymods.feature.JawbusFinder;
+import com.zytrm.mommymods.feature.MediaPlayer;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -18,5 +19,6 @@ public abstract class GuiMixin {
         CallbackInfo ci
     ) {
         JawbusFinder.render(graphics);
+        MediaPlayer.renderHud(graphics);
     }
 }

@@ -22,6 +22,11 @@ data class MommySettings(
     var deathMessageDetection: Boolean = true,
     var lootingVMessageEnabled: Boolean = true,
     var lootingVMessage: String = DEFAULT_LOOTING_V_MESSAGE,
+    var mediaPlayer: Boolean = true,
+    var mediaVolume: Float = 0.8f,
+    var mediaHud: Boolean = true,
+    var mediaAutoplay: Boolean = true,
+    var mediaYoutubeRefreshToken: String? = null,
 )
 
 object ModConfig {
@@ -39,6 +44,7 @@ object ModConfig {
         }.onFailure { MommyMods.logger.warn("Could not load configuration", it) }
             .getOrElse { MommySettings() }
         if (values.lootingVMessage.isBlank()) values.lootingVMessage = DEFAULT_LOOTING_V_MESSAGE
+        values.mediaVolume = values.mediaVolume.coerceIn(0f, 1f)
         save()
     }
 

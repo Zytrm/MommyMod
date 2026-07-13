@@ -7,7 +7,9 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 import kotlin.math.roundToInt
 
 object JawbusFinder {
-    private val deathMessage = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) was killed by (?:Lord )?Jawbus\\.?$")
+    private val deathMessage = Regex(
+        "^\\s*☠\\s+(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})\\s+was killed by Lord Jawbus\\.\\s*$",
+    )
     private const val DISPLAY_MILLIS = 10_000L
     private const val COOLDOWN_MILLIS = 45_000L
 
@@ -18,14 +20,26 @@ object JawbusFinder {
     fun onMessage(message: String) {
         val settings = ModConfig.values
         if (!settings.jawbusFinder || !settings.deathMessageDetection || !GameContext.isOnHypixel()) return
-        val name = deathMessage.matchEntire(message)?.groupValues?.get(1) ?: return
-        if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true) || PartyState.isMember(name)) return
+        val name = classify(message, Minecraft.getInstance().user.name, PartyState::isMember) ?: return
 
         val now = System.currentTimeMillis()
         if (now < nextAllowedAt) return
         playerName = name
         alertUntil = now + DISPLAY_MILLIS
         nextAllowedAt = now + COOLDOWN_MILLIS
+    }
+
+    internal fun extractVictim(message: String): String? = deathMessage.matchEntire(message)?.groupValues?.get(1)
+
+    internal fun classify(message: String, localPlayer: String, partyMember: (String) -> Boolean): String? {
+        val victim = extractVictim(message) ?: return null
+        return victim.takeUnless { it.equals(localPlayer, ignoreCase = true) || partyMember(it) }
+    }
+
+    fun reset() {
+        alertUntil = 0L
+        nextAllowedAt = 0L
+        playerName = ""
     }
 
     @JvmStatic

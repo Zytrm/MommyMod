@@ -3,6 +3,7 @@ package com.zytrm.mommymods.ui
 import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.LootingVMessage
+import com.zytrm.mommymods.feature.MediaPlayer
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
@@ -21,7 +22,8 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         LOUDER_CATCH("LouderCatch", true),
         PARTY_HELPER("FishingPartyHelper", true),
         LOOTING_MESSAGE("Looting V Message", true),
-        JAWBUS_FINDER("Jawbus Finder", true);
+        JAWBUS_FINDER("Jawbus Finder", true),
+        MEDIA_PLAYER("Aura Player", true);
 
         fun enabled(): Boolean = when (this) {
             HIDE_LINE -> ModConfig.values.hideFishingLine
@@ -29,6 +31,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             PARTY_HELPER -> ModConfig.values.fishingPartyHelper
             LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
+            MEDIA_PLAYER -> ModConfig.values.mediaPlayer
         }
 
         fun setEnabled(value: Boolean) {
@@ -38,13 +41,17 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 PARTY_HELPER -> ModConfig.values.fishingPartyHelper = value
                 LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled = value
                 JAWBUS_FINDER -> ModConfig.values.jawbusFinder = value
+                MEDIA_PLAYER -> {
+                    ModConfig.values.mediaPlayer = value
+                    MediaPlayer.onEnabledChanged(value)
+                }
             }
         }
     }
 
     private data class FeatureCategory(val title: String, val features: List<FeatureEntry>)
     private data class PanelLayout(val category: FeatureCategory, val x: Int, val y: Int, val width: Int)
-    private enum class DraggingSlider { VOLUME, PITCH }
+    private enum class DraggingSlider { VOLUME, PITCH, MEDIA_VOLUME }
 
     private val categories = listOf(
         FeatureCategory(
@@ -57,6 +64,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 FeatureEntry.JAWBUS_FINDER,
             ),
         ),
+        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER)),
     )
 
     private var openFeature: FeatureEntry? = null
@@ -157,6 +165,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             FeatureEntry.PARTY_HELPER -> drawPartyHelperWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.LOOTING_MESSAGE -> drawLootingMessageWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.MEDIA_PLAYER -> drawMediaPlayerWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.HIDE_LINE -> Unit
         }
     }
@@ -204,6 +213,33 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             "Death Message Detection",
             ModConfig.values.deathMessageDetection,
             ModConfig.values.jawbusFinder,
+            mouseX,
+            mouseY,
+        )
+    }
+
+    private fun drawMediaPlayerWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        val enabled = ModConfig.values.mediaPlayer
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", enabled, true, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 52, windowWidth, "Now Playing HUD", ModConfig.values.mediaHud, enabled, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 74, windowWidth, "Autoplay Playlists", ModConfig.values.mediaAutoplay, enabled, mouseX, mouseY)
+        drawSliderSetting(
+            graphics,
+            windowY + 96,
+            windowWidth,
+            "Volume",
+            ModConfig.values.mediaVolume,
+            0f,
+            1f,
+            "${(ModConfig.values.mediaVolume * 100).roundToInt()}%",
+        )
+        drawActionSetting(graphics, windowY + 118, windowWidth, "Player", "OPEN", mouseX, mouseY)
+        drawActionSetting(
+            graphics,
+            windowY + 140,
+            windowWidth,
+            "YouTube",
+            if (MediaPlayer.isYoutubeAuthorized()) "SIGNED" else "SIGN IN",
             mouseX,
             mouseY,
         )
@@ -362,6 +398,29 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 } else return false
                 else -> return false
             }
+            FeatureEntry.MEDIA_PLAYER -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> {
+                    ModConfig.values.mediaPlayer = !ModConfig.values.mediaPlayer
+                    MediaPlayer.onEnabledChanged(ModConfig.values.mediaPlayer)
+                }
+                in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.mediaPlayer) {
+                    ModConfig.values.mediaHud = !ModConfig.values.mediaHud
+                } else return false
+                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.mediaPlayer) {
+                    ModConfig.values.mediaAutoplay = !ModConfig.values.mediaAutoplay
+                } else return false
+                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.mediaPlayer) {
+                    draggingSlider = DraggingSlider.MEDIA_VOLUME
+                    updateSlider(mouseX)
+                } else return false
+                in (windowY + 118)..(windowY + 137) -> if (ModConfig.values.mediaPlayer) {
+                    MediaPlayer.openScreen(this)
+                } else return false
+                in (windowY + 140)..(windowY + 159) -> if (ModConfig.values.mediaPlayer) {
+                    MediaPlayer.startYoutubeSignIn()
+                } else return false
+                else -> return false
+            }
             FeatureEntry.HIDE_LINE -> return false
         }
         ModConfig.save()
@@ -431,6 +490,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         when (draggingSlider) {
             DraggingSlider.VOLUME -> ModConfig.values.catchVolume = ((0.1f + progress * 19.9f) * 10).roundToInt() / 10f
             DraggingSlider.PITCH -> ModConfig.values.catchPitch = ((0.5f + progress * 1.5f) * 20).roundToInt() / 20f
+            DraggingSlider.MEDIA_VOLUME -> MediaPlayer.setVolume((progress * 100).roundToInt() / 100f, save = false)
             null -> Unit
         }
     }
@@ -460,6 +520,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         FeatureEntry.PARTY_HELPER -> 230 to 120
         FeatureEntry.LOOTING_MESSAGE -> 300 to 98
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
+        FeatureEntry.MEDIA_PLAYER -> 230 to 164
         FeatureEntry.HIDE_LINE -> 210 to 70
     }
 

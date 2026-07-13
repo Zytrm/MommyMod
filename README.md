@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Zytrm/MommyMod?style=for-the-badge" alt="License"></a>
 </p>
 
-> Focused fishing utilities for Hypixel SkyBlock, built with Fabric and Kotlin.
+> Compact fishing utilities and practical client tools for Hypixel SkyBlock, built with Fabric and Kotlin.
 
 ---
 
@@ -27,12 +27,13 @@
 - **Hide Fishing Line** — hides the line between your rod and bobber without hiding the bobber.
 - **LouderCatch** — plays a configurable alert exactly when a fish is ready to reel, with volume up to 20x.
 - **FishingPartyHelper** — checks Fishing 45, Silver Trophy Hunter, Looting V, Bloodshot belt, and Jawbus eligibility when players join.
-- **Jawbus Finder** — shows a compact alert when a non-party player dies to Jawbus in your lobby.
+- **Jawbus Finder** — shows a compact alert only when a non-party player dies to Lord Jawbus in your lobby.
 - **Looting V Message** — sends one configurable reminder when you spawn a Jawbus.
+- **Aura Player** — plays YouTube searches and links, SoundCloud, supported direct media URLs, playlists, and local files inside Minecraft.
 
 ## Configuration
 
-Open the compact fishing menu with any of these commands:
+Open the compact MommyMods menu with any of these commands:
 
 ```text
 /mm
@@ -41,6 +42,21 @@ Open the compact fishing menu with any of these commands:
 ```
 
 Left-click a feature to toggle it. Right-click a configurable feature to open its options. Settings are saved to `config/mommymods.json`.
+
+Aura Player is in the compact **Misc** category. Right-click it to control volume, playlist autoplay, the now-playing HUD, and optional YouTube sign-in. Use its player screen or these commands:
+
+```text
+/mmplay
+/mmplay <URL or search>
+/mmmedia play <URL or search>
+/mmmedia pause|next|previous|stop
+/mmmedia shuffle|repeat
+/mmmedia seek <seconds>
+/mmmedia volume <0-100>
+/mmmedia signin
+```
+
+Spotify links open in the desktop app or browser because Spotify does not provide playable audio streams to the embedded player.
 
 <details>
 <summary><strong>Debug commands</strong></summary>
@@ -60,12 +76,14 @@ Debug tools are opt-in and never auto-kick or send the preview message.
 <details>
 <summary><strong>Detection notes</strong></summary>
 
-- Features activate only on `hypixel.net` and its subdomains.
+- Fishing features activate only on `hypixel.net` and its subdomains.
 - LouderCatch follows the local hook lifecycle and confirms the associated `!!!` fishing timer marker before alerting.
 - FishingPartyHelper uses a narrow readiness service and falls back to visible in-game gear when profile data is unavailable. Unknown values are never treated as failures for auto-kick.
 - A player can Jawbus only with Fishing 45 or higher and Silver Trophy Hunter.
 - The belt check distinguishes no equipped Gillsplash/Finwave from a relevant belt without Bloodshot.
+- Jawbus Finder matches the exact skull-prefixed `☠ <player> was killed by Lord Jawbus.` line. Party joins, departures, transfers, party chat, and `/party list` role lines keep the exclusion list current.
 - Jawbus alerts and chat reminders use narrow Hypixel messages with per-event cooldowns to avoid duplicates.
+- The optional YouTube sign-in refresh token is stored only in the local `config/mommymods.json` file.
 
 </details>
 
@@ -83,7 +101,7 @@ Windows PowerShell:
 ./gradlew.bat build
 ```
 
-The distributable JAR is written to `build/libs/`.
+The distributable JAR is written to `build/libs/MommyMods-<version>.jar`.
 
 ## Contributions
 

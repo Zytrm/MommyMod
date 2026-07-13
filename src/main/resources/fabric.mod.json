@@ -3,7 +3,7 @@
   "id": "mommymods",
   "version": "${version}",
   "name": "MommyMods",
-  "description": "Focused fishing utilities for Hypixel SkyBlock.",
+  "description": "Compact fishing tools and an in-game media player for Hypixel SkyBlock.",
   "authors": ["Zytrm"],
   "contact": {
     "homepage": "https://github.com/Zytrm/MommyMod",
