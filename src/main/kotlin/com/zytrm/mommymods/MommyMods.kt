@@ -7,11 +7,12 @@ import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.core.Chat
 import com.zytrm.mommymods.feature.FishingPartyHelper
 import com.zytrm.mommymods.feature.JawbusFinder
+import com.zytrm.mommymods.feature.JawbusFinisherHelper
 import com.zytrm.mommymods.feature.LouderCatch
-import com.zytrm.mommymods.feature.LootingVMessage
 import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.feature.PartyState
 import com.zytrm.mommymods.feature.PartyCommands
+import com.zytrm.mommymods.feature.RareDropScreenshot
 import com.zytrm.mommymods.ui.MommyConfigScreen
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -53,7 +54,8 @@ object MommyMods : ClientModInitializer {
                 PartyState.onMessage(message)
                 FishingPartyHelper.onMessage(message)
                 JawbusFinder.onMessage(message)
-                LootingVMessage.onMessage(message)
+                JawbusFinisherHelper.onMessage(message)
+                RareDropScreenshot.onMessage(message)
             }
         }
 
@@ -176,7 +178,7 @@ object MommyMods : ClientModInitializer {
                         1
                     })
                     .then(ClientCommands.literal("message").executes {
-                        LootingVMessage.debugPreview()
+                        JawbusFinisherHelper.debugPreview()
                         1
                     }),
             )
@@ -189,7 +191,8 @@ object MommyMods : ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register { minecraft ->
             LouderCatch.onTick(minecraft)
             FishingPartyHelper.onTick(minecraft)
-            LootingVMessage.onTick(minecraft)
+            JawbusFinisherHelper.onTick(minecraft)
+            RareDropScreenshot.onTick(minecraft)
             PartyCommands.onTick()
             if (openMenuNextTick) {
                 openMenuNextTick = false
@@ -202,7 +205,10 @@ object MommyMods : ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PartyState.reset()
             PartyCommands.reset()
+            FishingPartyHelper.reset()
             JawbusFinder.reset()
+            JawbusFinisherHelper.reset()
+            RareDropScreenshot.reset()
         }
 
         ClientLifecycleEvents.CLIENT_STOPPING.register {

@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
 
-const val DEFAULT_LOOTING_V_MESSAGE = "Please do not kill my Jawbus unless you have Looting V."
+const val DEFAULT_FINISHER_MESSAGE = "[MM] Jawbus {health}% - L5 finisher: {players}"
 
 internal fun isInstallationId(value: String): Boolean = runCatching {
     val uuid = UUID.fromString(value)
@@ -22,6 +22,7 @@ data class PartyCommandSetting(
 data class MommySettings(
     var installationId: String = "",
     var hideFishingLine: Boolean = true,
+    var bobberVisibility: String = "Line Only",
     var louderCatch: Boolean = true,
     var catchSound: String = "Experience",
     var catchVolume: Float = 4.0f,
@@ -30,10 +31,18 @@ data class MommySettings(
     var autoKick: Boolean = false,
     var kickNoLootingV: Boolean = true,
     var kickCantJawbus: Boolean = true,
+    var partyReadinessHud: Boolean = true,
     var jawbusFinder: Boolean = true,
     var deathMessageDetection: Boolean = true,
-    var lootingVMessageEnabled: Boolean = true,
-    var lootingVMessage: String = DEFAULT_LOOTING_V_MESSAGE,
+    var jawbusFinisherEnabled: Boolean = true,
+    var jawbusFinisherHealth: Int = 20,
+    var jawbusFinisherPartyMessage: Boolean = true,
+    var jawbusFinisherMessage: String = DEFAULT_FINISHER_MESSAGE,
+    var lastJawbusHookedAt: Long = 0L,
+    var rareDropScreenshots: Boolean = true,
+    var screenshotRngDrops: Boolean = true,
+    var screenshotDyesAndVials: Boolean = true,
+    var screenshotRareRewards: Boolean = true,
     var mediaPlayer: Boolean = true,
     var mediaVolume: Float = 0.8f,
     var mediaHud: Boolean = true,
@@ -64,7 +73,12 @@ object ModConfig {
         }.onFailure { MommyMods.logger.warn("Could not load configuration", it) }
             .getOrElse { MommySettings() }
         if (!isInstallationId(values.installationId)) values.installationId = UUID.randomUUID().toString()
-        if (values.lootingVMessage.isBlank()) values.lootingVMessage = DEFAULT_LOOTING_V_MESSAGE
+        if (values.bobberVisibility !in setOf("Line Only", "Hide Others", "Hide All")) {
+            values.bobberVisibility = "Line Only"
+        }
+        if (values.jawbusFinisherMessage.isBlank()) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
+        values.jawbusFinisherHealth = values.jawbusFinisherHealth.coerceIn(5, 50)
+        values.lastJawbusHookedAt = values.lastJawbusHookedAt.coerceAtLeast(0L)
         values.mediaVolume = values.mediaVolume.coerceIn(0f, 1f)
         if (values.clickGuiSorting !in setOf("A-Z Sorting", "Width Sorting", "No Sorting")) {
             values.clickGuiSorting = "No Sorting"

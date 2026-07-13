@@ -31,6 +31,12 @@ object PartyCommands {
             defaultAlias = "lootingv",
             action = LootingVPartyCheck::request,
         ),
+        PartyCommandDefinition(
+            id = "jawbus_time",
+            label = "Last Jawbus Time",
+            defaultAlias = "jawbustime",
+            action = JawbusTimePartyCommand::request,
+        ),
     )
 
     fun ensureSettings() {
@@ -98,6 +104,47 @@ object PartyCommands {
     private fun normalizedAlias(value: String, fallback: String): String {
         val candidate = value.trim().removePrefix("/").lowercase()
         return candidate.takeIf { validAlias.matches(it) && it !in reservedAliases } ?: fallback
+    }
+}
+
+object JawbusTimePartyCommand {
+    private const val MAX_PARTY_MESSAGE_LENGTH = 252
+
+    fun request() {
+        if (!GameContext.isOnHypixel()) {
+            Chat.info("Party Commands only runs on Hypixel.")
+            return
+        }
+        val hookedAt = JawbusFinisherHelper.lastHookedAt()
+        val result = if (hookedAt <= 0L) {
+            "[MM] No recorded Jawbus hook yet."
+        } else {
+            val elapsed = (System.currentTimeMillis() - hookedAt).coerceAtLeast(0L)
+            "[MM] Last Jawbus hooked ${formatElapsed(elapsed)} ago."
+        }.take(MAX_PARTY_MESSAGE_LENGTH)
+
+        if (!PartyState.isInParty()) {
+            Chat.info(result.removePrefix("[MM] ") + " (not in a party)")
+            return
+        }
+        runCatching { Minecraft.getInstance().connection?.sendCommand("pc $result") }
+            .onFailure { MommyMods.logger.warn("Could not send the last Jawbus time", it) }
+    }
+
+    internal fun formatElapsed(milliseconds: Long): String {
+        var seconds = milliseconds.coerceAtLeast(0L) / 1_000L
+        val days = seconds / 86_400L
+        seconds %= 86_400L
+        val hours = seconds / 3_600L
+        seconds %= 3_600L
+        val minutes = seconds / 60L
+        seconds %= 60L
+        return buildList {
+            if (days > 0L) add("${days}d")
+            if (hours > 0L || days > 0L) add("${hours}h")
+            if (minutes > 0L || hours > 0L || days > 0L) add("${minutes}m")
+            add("${seconds}s")
+        }.joinToString(" ")
     }
 }
 

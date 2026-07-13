@@ -1,8 +1,9 @@
 package com.zytrm.mommymods.ui
 
 import com.zytrm.mommymods.config.ModConfig
+import com.zytrm.mommymods.feature.BobberVisibility
+import com.zytrm.mommymods.feature.JawbusFinisherHelper
 import com.zytrm.mommymods.feature.LouderCatch
-import com.zytrm.mommymods.feature.LootingVMessage
 import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.feature.PartyCommands
 import net.minecraft.client.gui.GuiGraphicsExtractor
@@ -19,11 +20,12 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         val title: String,
         val hasOptions: Boolean,
     ) {
-        HIDE_LINE("Hide Fishing Line", false),
+        HIDE_LINE("Hide Fishing Line", true),
         LOUDER_CATCH("LouderCatch", true),
         PARTY_HELPER("FishingPartyHelper", true),
-        LOOTING_MESSAGE("Looting V Message", true),
+        JAWBUS_FINISHER("Jawbus Finisher", true),
         JAWBUS_FINDER("Jawbus Finder", true),
+        RARE_SCREENSHOTS("Rare Screenshots", true),
         MEDIA_PLAYER("Aura Player", true),
         PARTY_COMMANDS("Party Commands", true),
         CLICK_GUI("ClickGUI", true);
@@ -32,8 +34,9 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             HIDE_LINE -> ModConfig.values.hideFishingLine
             LOUDER_CATCH -> ModConfig.values.louderCatch
             PARTY_HELPER -> ModConfig.values.fishingPartyHelper
-            LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled
+            JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
+            RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots
             MEDIA_PLAYER -> ModConfig.values.mediaPlayer
             PARTY_COMMANDS -> ModConfig.values.partyCommandsEnabled
             CLICK_GUI -> true
@@ -44,8 +47,9 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 HIDE_LINE -> ModConfig.values.hideFishingLine = value
                 LOUDER_CATCH -> ModConfig.values.louderCatch = value
                 PARTY_HELPER -> ModConfig.values.fishingPartyHelper = value
-                LOOTING_MESSAGE -> ModConfig.values.lootingVMessageEnabled = value
+                JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled = value
                 JAWBUS_FINDER -> ModConfig.values.jawbusFinder = value
+                RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots = value
                 MEDIA_PLAYER -> {
                     ModConfig.values.mediaPlayer = value
                     MediaPlayer.onEnabledChanged(value)
@@ -67,11 +71,11 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 FeatureEntry.HIDE_LINE,
                 FeatureEntry.LOUDER_CATCH,
                 FeatureEntry.PARTY_HELPER,
-                FeatureEntry.LOOTING_MESSAGE,
+                FeatureEntry.JAWBUS_FINISHER,
                 FeatureEntry.JAWBUS_FINDER,
             ),
         ),
-        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER, FeatureEntry.PARTY_COMMANDS)),
+        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER, FeatureEntry.PARTY_COMMANDS, FeatureEntry.RARE_SCREENSHOTS)),
         FeatureCategory("DEV", listOf(FeatureEntry.CLICK_GUI)),
     )
 
@@ -82,7 +86,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
     private var windowDragX = 0
     private var windowDragY = 0
     private var draggingSlider: DraggingSlider? = null
-    private lateinit var lootingMessageBox: EditBox
+    private lateinit var finisherMessageBox: EditBox
     private val partyAliasBoxes = mutableMapOf<String, EditBox>()
 
     private val accent: Int get() = UiStyle.accent
@@ -100,12 +104,12 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     override fun init() {
         super.init()
-        lootingMessageBox = EditBox(font, 0, 0, 200, 16, Component.literal("Jawbus chat message"))
-        lootingMessageBox.setMaxLength(256)
-        lootingMessageBox.setValue(ModConfig.values.lootingVMessage)
-        lootingMessageBox.setResponder { value -> ModConfig.values.lootingVMessage = value }
-        lootingMessageBox.visible = false
-        addRenderableWidget(lootingMessageBox)
+        finisherMessageBox = EditBox(font, 0, 0, 200, 16, Component.literal("Jawbus finisher message"))
+        finisherMessageBox.setMaxLength(256)
+        finisherMessageBox.setValue(ModConfig.values.jawbusFinisherMessage)
+        finisherMessageBox.setResponder { value -> ModConfig.values.jawbusFinisherMessage = value }
+        finisherMessageBox.visible = false
+        addRenderableWidget(finisherMessageBox)
 
         PartyCommands.definitions.forEach { definition ->
             val box = EditBox(font, 0, 0, 92, 16, Component.literal("${definition.label} alias"))
@@ -124,7 +128,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         drawPanels(graphics, mouseX, mouseY)
 
         val selected = openFeature
-        lootingMessageBox.visible = selected == FeatureEntry.LOOTING_MESSAGE
+        finisherMessageBox.visible = selected == FeatureEntry.JAWBUS_FINISHER
         partyAliasBoxes.values.forEach { it.visible = selected == FeatureEntry.PARTY_COMMANDS }
         if (selected != null) {
             graphics.fill(0, 0, width, height, 0x76000000)
@@ -184,15 +188,21 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         graphics.centeredText(font, "x", windowX + windowWidth - 13, windowY + 7, textColor)
 
         when (feature) {
+            FeatureEntry.HIDE_LINE -> drawHideLineWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.LOUDER_CATCH -> drawLouderCatchWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.PARTY_HELPER -> drawPartyHelperWindow(graphics, windowWidth, mouseX, mouseY)
-            FeatureEntry.LOOTING_MESSAGE -> drawLootingMessageWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.JAWBUS_FINISHER -> drawJawbusFinisherWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
+            FeatureEntry.RARE_SCREENSHOTS -> drawRareScreenshotsWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.MEDIA_PLAYER -> drawMediaPlayerWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.PARTY_COMMANDS -> drawPartyCommandsWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.CLICK_GUI -> drawClickGuiWindow(graphics, windowWidth, mouseX, mouseY)
-            FeatureEntry.HIDE_LINE -> Unit
         }
+    }
+
+    private fun drawHideLineWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", ModConfig.values.hideFishingLine, true, mouseX, mouseY)
+        drawValueSetting(graphics, windowY + 52, windowWidth, "Bobbers", BobberVisibility.current().label, mouseX, mouseY)
     }
 
     private fun drawLouderCatchWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -205,28 +215,30 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun drawPartyHelperWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
         drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", ModConfig.values.fishingPartyHelper, true, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 52, windowWidth, "Auto Kick", ModConfig.values.autoKick, true, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 74, windowWidth, "No Looting V", ModConfig.values.kickNoLootingV, ModConfig.values.autoKick, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 96, windowWidth, "Can't Jawbus", ModConfig.values.kickCantJawbus, ModConfig.values.autoKick, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 52, windowWidth, "Party Sidebar HUD", ModConfig.values.partyReadinessHud, ModConfig.values.fishingPartyHelper, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 74, windowWidth, "Auto Kick", ModConfig.values.autoKick, true, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 96, windowWidth, "No Looting V", ModConfig.values.kickNoLootingV, ModConfig.values.autoKick, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 118, windowWidth, "Can't Jawbus", ModConfig.values.kickCantJawbus, ModConfig.values.autoKick, mouseX, mouseY)
     }
 
-    private fun drawLootingMessageWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
-        drawToggleSetting(
-            graphics,
-            windowY + 30,
-            windowWidth,
-            "Enabled",
-            ModConfig.values.lootingVMessageEnabled,
-            true,
-            mouseX,
-            mouseY,
-        )
-        graphics.fill(windowX + 10, windowY + 52, windowX + windowWidth - 10, windowY + 72, windowInner)
-        graphics.text(font, "Message", windowX + 16, windowY + 58, textColor, false)
-        lootingMessageBox.setX(windowX + 68)
-        lootingMessageBox.setY(windowY + 54)
-        lootingMessageBox.setWidth(windowWidth - 84)
-        drawActionSetting(graphics, windowY + 74, windowWidth, "Test Message", "PREVIEW", mouseX, mouseY)
+    private fun drawJawbusFinisherWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", ModConfig.values.jawbusFinisherEnabled, true, mouseX, mouseY)
+        drawValueSetting(graphics, windowY + 52, windowWidth, "Trigger Health", "${ModConfig.values.jawbusFinisherHealth}%", mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 74, windowWidth, "Party Callout", ModConfig.values.jawbusFinisherPartyMessage, ModConfig.values.jawbusFinisherEnabled, mouseX, mouseY)
+        graphics.fill(windowX + 10, windowY + 96, windowX + windowWidth - 10, windowY + 116, windowInner)
+        graphics.text(font, "Message", windowX + 16, windowY + 102, textColor, false)
+        finisherMessageBox.setX(windowX + 68)
+        finisherMessageBox.setY(windowY + 98)
+        finisherMessageBox.setWidth(windowWidth - 84)
+        drawActionSetting(graphics, windowY + 118, windowWidth, "Finisher Alert", "PREVIEW", mouseX, mouseY)
+    }
+
+    private fun drawRareScreenshotsWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
+        val enabled = ModConfig.values.rareDropScreenshots
+        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", enabled, true, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 52, windowWidth, "RNG Drops", ModConfig.values.screenshotRngDrops, enabled, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 74, windowWidth, "Dyes & Vials", ModConfig.values.screenshotDyesAndVials, enabled, mouseX, mouseY)
+        drawToggleSetting(graphics, windowY + 96, windowWidth, "Rare Rewards", ModConfig.values.screenshotRareRewards, enabled, mouseX, mouseY)
     }
 
     private fun drawJawbusWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -414,6 +426,11 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun handleWindowClick(feature: FeatureEntry, mouseX: Int, mouseY: Int): Boolean {
         when (feature) {
+            FeatureEntry.HIDE_LINE -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> ModConfig.values.hideFishingLine = !ModConfig.values.hideFishingLine
+                in (windowY + 52)..(windowY + 71) -> BobberVisibility.cycle()
+                else -> return false
+            }
             FeatureEntry.LOUDER_CATCH -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.louderCatch = !ModConfig.values.louderCatch
                 in (windowY + 52)..(windowY + 71) -> cycleSound()
@@ -430,26 +447,44 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             }
             FeatureEntry.PARTY_HELPER -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.fishingPartyHelper = !ModConfig.values.fishingPartyHelper
-                in (windowY + 52)..(windowY + 71) -> ModConfig.values.autoKick = !ModConfig.values.autoKick
-                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.autoKick) {
+                in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.fishingPartyHelper) {
+                    ModConfig.values.partyReadinessHud = !ModConfig.values.partyReadinessHud
+                } else return false
+                in (windowY + 74)..(windowY + 93) -> ModConfig.values.autoKick = !ModConfig.values.autoKick
+                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.autoKick) {
                     ModConfig.values.kickNoLootingV = !ModConfig.values.kickNoLootingV
                 } else return false
-                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.autoKick) {
+                in (windowY + 118)..(windowY + 137) -> if (ModConfig.values.autoKick) {
                     ModConfig.values.kickCantJawbus = !ModConfig.values.kickCantJawbus
                 } else return false
                 else -> return false
             }
-            FeatureEntry.LOOTING_MESSAGE -> when (mouseY) {
-                in (windowY + 30)..(windowY + 49) -> {
-                    ModConfig.values.lootingVMessageEnabled = !ModConfig.values.lootingVMessageEnabled
-                }
-                in (windowY + 74)..(windowY + 93) -> LootingVMessage.debugPreview()
+            FeatureEntry.JAWBUS_FINISHER -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> ModConfig.values.jawbusFinisherEnabled = !ModConfig.values.jawbusFinisherEnabled
+                in (windowY + 52)..(windowY + 71) -> cycleFinisherHealth()
+                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.jawbusFinisherEnabled) {
+                    ModConfig.values.jawbusFinisherPartyMessage = !ModConfig.values.jawbusFinisherPartyMessage
+                } else return false
+                in (windowY + 118)..(windowY + 137) -> JawbusFinisherHelper.debugPreview()
                 else -> return false
             }
             FeatureEntry.JAWBUS_FINDER -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> ModConfig.values.jawbusFinder = !ModConfig.values.jawbusFinder
                 in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.jawbusFinder) {
                     ModConfig.values.deathMessageDetection = !ModConfig.values.deathMessageDetection
+                } else return false
+                else -> return false
+            }
+            FeatureEntry.RARE_SCREENSHOTS -> when (mouseY) {
+                in (windowY + 30)..(windowY + 49) -> ModConfig.values.rareDropScreenshots = !ModConfig.values.rareDropScreenshots
+                in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.rareDropScreenshots) {
+                    ModConfig.values.screenshotRngDrops = !ModConfig.values.screenshotRngDrops
+                } else return false
+                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.rareDropScreenshots) {
+                    ModConfig.values.screenshotDyesAndVials = !ModConfig.values.screenshotDyesAndVials
+                } else return false
+                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.rareDropScreenshots) {
+                    ModConfig.values.screenshotRareRewards = !ModConfig.values.screenshotRareRewards
                 } else return false
                 else -> return false
             }
@@ -494,7 +529,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 in (windowY + 118)..(windowY + 137) -> UiStyle.reset()
                 else -> return false
             }
-            FeatureEntry.HIDE_LINE -> return false
         }
         ModConfig.save()
         return true
@@ -543,7 +577,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
     private fun closeFeatureWindow() {
         draggingWindow = false
         draggingSlider = null
-        lootingMessageBox.visible = false
+        finisherMessageBox.visible = false
         partyAliasBoxes.values.forEach { it.visible = false }
         PartyCommands.ensureSettings()
         PartyCommands.definitions.forEach { definition ->
@@ -557,6 +591,12 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         val choices = LouderCatch.choices
         val current = choices.indexOfFirst { it.label == ModConfig.values.catchSound }.coerceAtLeast(0)
         ModConfig.values.catchSound = choices[(current + 1) % choices.size].label
+    }
+
+    private fun cycleFinisherHealth() {
+        val choices = listOf(10, 15, 20, 25, 30)
+        val current = choices.indexOf(ModConfig.values.jawbusFinisherHealth).coerceAtLeast(0)
+        ModConfig.values.jawbusFinisherHealth = choices[(current + 1) % choices.size]
     }
 
     private fun updateSlider(mouseX: Int) {
@@ -601,13 +641,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun windowSize(feature: FeatureEntry): Pair<Int, Int> = when (feature) {
         FeatureEntry.LOUDER_CATCH -> 230 to 142
-        FeatureEntry.PARTY_HELPER -> 230 to 120
-        FeatureEntry.LOOTING_MESSAGE -> 300 to 98
+        FeatureEntry.PARTY_HELPER -> 230 to 142
+        FeatureEntry.JAWBUS_FINISHER -> 310 to 142
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
+        FeatureEntry.RARE_SCREENSHOTS -> 230 to 120
         FeatureEntry.MEDIA_PLAYER -> 230 to 142
         FeatureEntry.PARTY_COMMANDS -> 250 to (54 + PartyCommands.definitions.size * 44)
         FeatureEntry.CLICK_GUI -> 230 to 142
-        FeatureEntry.HIDE_LINE -> 210 to 70
+        FeatureEntry.HIDE_LINE -> 230 to 76
     }
 
     override fun onClose() {
