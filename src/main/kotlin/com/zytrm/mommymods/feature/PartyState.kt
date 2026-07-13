@@ -38,8 +38,11 @@ object PartyState {
     )
     private val invitation = Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) invited .+ to the party!.*$")
     private val transferred = Regex("^The party was transferred to (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})(?: by .+| because .+)?$")
-    private val partyHeader = Regex("^Party Members \\((\\d+)\\)$")
+    private val partyHeader = Regex("^Party Members\\s*\\((\\d+)\\)$")
     private val partyRoleLine = Regex("^Party (Leader|Moderators?|Members?): (.+)$")
+    private val compactPartyMember = Regex(
+        "^[●○]\\s+(?:\\[[^]]+]\\s*)*([A-Za-z0-9_]{3,16})\\s+\\((Leader|Moderator|Member)\\)$",
+    )
     private val partyChat = Regex("^Party > (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}): .*$")
     private val listedPlayer = Regex("(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{3,16})(?=\\s*(?:●|,|$))")
     private val disbanded = listOf(
@@ -54,6 +57,11 @@ object PartyState {
     }
 
     internal fun applyMessage(message: String, localPlayer: String?) {
+        val trimmed = message.trim()
+        if (trimmed != message) {
+            applyMessage(trimmed, localPlayer)
+            return
+        }
         if (disbanded.any { it.matches(message) }) {
             reset()
             return
@@ -76,6 +84,15 @@ object PartyState {
             val names = listedPlayer.findAll(match.groupValues[2]).map { it.groupValues[1] }.toList()
             names.forEach(::addMember)
             if (role == "Leader") leader = names.firstOrNull()?.lowercase()
+            addLocalPlayer(localPlayer)
+            return
+        }
+
+        compactPartyMember.matchEntire(message)?.let { match ->
+            inParty = true
+            val name = match.groupValues[1]
+            addMember(name)
+            if (match.groupValues[2] == "Leader") leader = name.lowercase()
             addLocalPlayer(localPlayer)
             return
         }

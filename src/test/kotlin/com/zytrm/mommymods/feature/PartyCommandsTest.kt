@@ -56,4 +56,18 @@ class PartyCommandsTest {
         assertEquals(setOf("LocalPlayer", "Friend_One"), snapshot.members.toSet())
         PartyState.reset()
     }
+
+    @Test
+    fun parsesCurrentCompactPartyListWithWhitespace() {
+        PartyState.reset()
+        PartyState.applyMessage("  Party Members (1)  ", "Zytrm")
+        PartyState.applyMessage("● [MVP++] Zytrm (Leader)", "Zytrm")
+
+        val snapshot = PartyState.snapshot()
+        assertTrue(snapshot.inParty)
+        assertTrue(snapshot.listComplete)
+        assertEquals(listOf("Zytrm"), snapshot.members)
+        assertTrue(PartyState.isMember("Zytrm"))
+        PartyState.reset()
+    }
 }
