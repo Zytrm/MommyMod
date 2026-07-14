@@ -24,9 +24,8 @@ class JawbusFinderTest {
 
     @Test
     fun `rejects local and party victims`() {
-        PartyState.applyMessage("Party Members (2)", "LocalPlayer")
-        PartyState.applyMessage("Party Leader: [MVP+] LocalPlayer ●", "LocalPlayer")
-        PartyState.applyMessage("Party Members: [VIP] Friend_One ●", "LocalPlayer")
+        PartyState.applyMessage("You have created a party!", "LocalPlayer")
+        PartyState.applyMessage("[VIP] Friend_One joined the party.", "LocalPlayer")
 
         assertNull(JawbusFinder.classify("☠ LocalPlayer was killed by Lord Jawbus.", "LocalPlayer", PartyState::isMember))
         assertNull(JawbusFinder.classify("☠ Friend_One was killed by Lord Jawbus.", "LocalPlayer", PartyState::isMember))

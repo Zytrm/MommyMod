@@ -1,15 +1,28 @@
 package com.zytrm.mommymods.feature
 
-import com.zytrm.mommymods.config.ModConfig
-import com.zytrm.mommymods.core.GameContext
 import net.minecraft.client.Minecraft
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 object PartyState {
-    private const val REFRESH_INTERVAL_MILLIS = 75_000L
-    private const val REFRESH_RESPONSE_MILLIS = 5_000L
+    sealed interface Event {
+        data class MemberJoined(val name: String) : Event
+        data class MemberLeft(val name: String) : Event
+        data class LeaderChanged(val name: String?) : Event
+        data object Disbanded : Event
+    }
+
+    data class Snapshot(
+        val inParty: Boolean,
+        val members: List<String>,
+        val leader: String?,
+        val revision: Long,
+        val updatedAt: Long,
+    )
+
     private val members = ConcurrentHashMap.newKeySet<String>()
     private val displayNames = ConcurrentHashMap<String, String>()
+    private val listeners = CopyOnWriteArrayList<(Event) -> Unit>()
 
     @Volatile
     private var leader: String? = null
@@ -18,202 +31,164 @@ object PartyState {
     private var inParty = false
 
     @Volatile
-    private var partyListGeneration = 0L
-
-    @Volatile
-    private var expectedMemberCount: Int? = null
+    private var revision = 0L
 
     @Volatile
     private var lastUpdatedAt = 0L
 
-    @Volatile
-    private var lastListUpdatedAt = 0L
-
-    @Volatile
-    private var lastRefreshRequestAt = 0L
-
-    @Volatile
-    private var internalRefreshUntil = 0L
-
-    data class Snapshot(
-        val inParty: Boolean,
-        val members: List<String>,
-        val listGeneration: Long,
-        val listComplete: Boolean,
-        val fresh: Boolean,
+    private val joinedOther = Regex("^(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) joined the party\\.$")
+    private val joinedSelf = Regex("^You have joined (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16})(?:'s)? party!$")
+    private val created = Regex("^You have created a party[!.]?$")
+    private val queuedInFinder = Regex("^Party Finder > Your party has been queued in the dungeon finder!$")
+    private val partyFinderJoin = Regex(
+        "^Party Finder > (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) joined (?:the dungeon group|the group)! \\(.*\\)$",
     )
-
-    private val joinedOther = Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) joined the party\\.$")
-    private val joinedSelf = Regex("^You have joined (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})'?s? party!$")
-    private val created = Regex("^You have created a party!?$")
+    private val partyingWith = Regex("^You'll be partying with: (.+)$")
+    private val partyChat = Regex("^Party > (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}): .*$")
+    private val invitation = Regex("^(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) invited .+ to the party!.*$")
+    private val transferredBy = Regex(
+        "^The party was transferred to (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) by " +
+            "(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16})\\.?$",
+    )
+    private val transferredAfterLeave = Regex(
+        "^The party was transferred to (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) because " +
+            "(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) left\\.?$",
+    )
+    private val leaderDisconnected = Regex(
+        "^The party leader, (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) has disconnected, .+$",
+    )
+    private val leaderRejoined = Regex(
+        "^The party leader (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) has rejoined\\.$",
+    )
     private val removed = listOf(
-        Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) (?:has left|has been removed from) the party\\.$"),
-        Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) was removed from your party because they disconnected\\.$"),
-        Regex("^Kicked (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})(?: because they were offline| from the party)\\.$"),
-        Regex("^You kicked (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) from the party\\.$"),
-        Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) was kicked from the party by .+\\.$"),
+        Regex("^(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) (?:has left|has been removed from) the party\\.$"),
+        Regex("^(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) was removed from your party because they disconnected\\.$"),
+        Regex("^Kicked (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16})(?: because they were offline| from the party)\\.$"),
+        Regex("^You kicked (?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) from the party\\.$"),
+        Regex("^(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16}) was kicked from the party by .+\\.$"),
     )
-    private val invitation = Regex("^(?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}) invited .+ to the party!.*$")
-    private val transferred = Regex("^The party was transferred to (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16})(?: by .+| because .+)?$")
-    private val partyHeader = Regex("^Party Members\\s*\\((\\d+)\\)$")
-    private val partyRoleLine = Regex("^Party (Leader|Moderators?|Members?): (.+)$")
-    private val compactPartyMember = Regex(
-        "^[●○]\\s+(?:\\[[^]]+]\\s*)*([A-Za-z0-9_]{3,16})\\s+\\((Leader|Moderator|Member)\\)$",
-    )
-    private val partyChat = Regex("^Party > (?:\\[[^]]+]\\s+)?([A-Za-z0-9_]{3,16}): .*$")
-    private val listedPlayer = Regex("(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{3,16})(?=\\s*(?:●|,|$))")
     private val disbanded = listOf(
+        Regex("^(?:\\[[^]]+]\\s*)?[A-Za-z0-9_]{1,16} has disbanded the party!$"),
+        Regex("^You have been kicked from the party.*$"),
+        Regex("^The party was disbanded.*$"),
         Regex("^You left the party\\.$"),
         Regex("^You are not currently in a party\\.?$"),
-        Regex("^The party was disbanded.*$"),
-        Regex("^You have been kicked from the party.*$"),
     )
+    private val listedName = Regex("(?:\\[[^]]+]\\s*)?([A-Za-z0-9_]{1,16})")
+
+    fun addListener(listener: (Event) -> Unit): AutoCloseable {
+        listeners += listener
+        return AutoCloseable { listeners -= listener }
+    }
 
     fun onMessage(message: String) {
         applyMessage(message, localName())
     }
 
-    fun onTick(minecraft: Minecraft) {
-        val settings = ModConfig.values
-        if (!GameContext.isOnHypixel() || (!settings.fishingPartyHelper && !settings.partyCommandsEnabled)) return
-        requestRefresh(minecraft, force = false)
-    }
-
-    fun requestRefresh(minecraft: Minecraft, force: Boolean): Boolean {
-        val now = System.currentTimeMillis()
-        if (now < internalRefreshUntil) return true
-        if (!force) {
-            if (!inParty) return false
-            if (now - lastListUpdatedAt < REFRESH_INTERVAL_MILLIS) return false
-            if (now - lastRefreshRequestAt < REFRESH_INTERVAL_MILLIS) return false
-        }
-        val connection = minecraft.connection ?: return false
-        return runCatching {
-            connection.sendCommand("party list")
-            lastRefreshRequestAt = now
-            internalRefreshUntil = now + REFRESH_RESPONSE_MILLIS
-            true
-        }.getOrDefault(false)
-    }
-
-    fun shouldHideInternalRefresh(message: String): Boolean =
-        System.currentTimeMillis() < internalRefreshUntil && isPartyListResponse(message)
-
-    internal fun isPartyListResponse(message: String): Boolean = message.lineSequence()
-        .map(String::trim)
-        .filter(String::isNotEmpty)
-        .any { line ->
-            partyHeader.matches(line) ||
-                partyRoleLine.matches(line) ||
-                compactPartyMember.matches(line) ||
-                line.startsWith("[Warp] [Invite] [Disband]") ||
-                line.matches(Regex("^You are not currently in a party\\.?$"))
-        }
-
     internal fun applyMessage(message: String, localPlayer: String?) {
         if ('\n' in message || '\r' in message) {
-            message.lineSequence()
-                .map(String::trim)
-                .filter(String::isNotEmpty)
-                .forEach { applyMessage(it, localPlayer) }
+            message.lineSequence().map(String::trim).filter(String::isNotEmpty).forEach { applyMessage(it, localPlayer) }
             return
         }
-        val trimmed = message.trim()
-        if (trimmed != message) {
-            applyMessage(trimmed, localPlayer)
-            return
-        }
-        if (disbanded.any { it.matches(message) }) {
-            reset()
+        val text = message.trim()
+        if (text.isEmpty()) return
+
+        if (disbanded.any { it.matches(text) }) {
+            clearParty(notify = true)
             return
         }
 
-        partyHeader.matchEntire(message)?.let { match ->
-            members.clear()
-            displayNames.clear()
-            leader = null
-            expectedMemberCount = match.groupValues[1].toIntOrNull()
-            inParty = expectedMemberCount?.let { it > 0 } == true
-            partyListGeneration++
-            lastListUpdatedAt = System.currentTimeMillis()
-            lastUpdatedAt = lastListUpdatedAt
-            addLocalPlayer(localPlayer)
-            return
-        }
-
-        partyRoleLine.matchEntire(message)?.let { match ->
+        joinedSelf.matchEntire(text)?.groupValues?.get(1)?.let { owner ->
+            clearParty(notify = false)
             inParty = true
-            val role = match.groupValues[1]
-            val names = listedPlayer.findAll(match.groupValues[2]).map { it.groupValues[1] }.toList()
-            names.forEach(::addMember)
-            if (role == "Leader") leader = names.firstOrNull()?.lowercase()
+            addMember(owner, notifyJoin = false)
             addLocalPlayer(localPlayer)
+            setLeader(owner)
             markUpdated()
             return
         }
 
-        compactPartyMember.matchEntire(message)?.let { match ->
+        if (created.matches(text)) {
+            clearParty(notify = false)
             inParty = true
-            val name = match.groupValues[1]
-            addMember(name)
-            if (match.groupValues[2] == "Leader") leader = name.lowercase()
             addLocalPlayer(localPlayer)
+            setLeader(localPlayer)
             markUpdated()
             return
         }
 
-        joinedOther.matchEntire(message)?.groupValues?.get(1)?.let { name ->
-            inParty = true
-            addKnownMember(name)
-            addLocalPlayer(localPlayer)
-            markUpdated()
-            return
-        }
-        partyChat.matchEntire(message)?.groupValues?.get(1)?.let { name ->
-            inParty = true
-            addKnownMember(name)
-            addLocalPlayer(localPlayer)
-            markUpdated()
-            return
-        }
-        joinedSelf.matchEntire(message)?.groupValues?.get(1)?.let { name ->
-            reset()
-            inParty = true
-            leader = name.lowercase()
-            addMember(name)
-            addLocalPlayer(localPlayer)
-            markUpdated()
-            return
-        }
-        if (created.matches(message)) {
-            reset()
-            inParty = true
-            leader = localPlayer?.lowercase()
-            addLocalPlayer(localPlayer)
-            expectedMemberCount = if (localPlayer.isNullOrBlank()) null else 1
-            markUpdated()
+        if (queuedInFinder.matches(text)) {
+            ensureParty(localPlayer)
+            if (leader == null) setLeader(localPlayer)
             return
         }
 
-        removed.firstNotNullOfOrNull { it.matchEntire(message)?.groupValues?.get(1) }?.let { name ->
-            removeKnownMember(name)
-            if (leader.equals(name, ignoreCase = true)) leader = null
-            markUpdated()
+        joinedOther.matchEntire(text)?.groupValues?.get(1)?.let { name ->
+            ensureParty(localPlayer)
+            addMember(name, notifyJoin = true)
             return
         }
 
-        invitation.matchEntire(message)?.groupValues?.get(1)?.let { inviter ->
-            inParty = true
-            addMember(inviter)
-            addLocalPlayer(localPlayer)
-            markUpdated()
+        partyFinderJoin.matchEntire(text)?.groupValues?.get(1)?.let { name ->
+            ensureParty(localPlayer)
+            addMember(name, notifyJoin = true)
+            return
         }
-        transferred.matchEntire(message)?.groupValues?.get(1)?.let { newLeader ->
-            inParty = true
-            leader = newLeader.lowercase()
-            addKnownMember(newLeader)
-            addLocalPlayer(localPlayer)
-            markUpdated()
+
+        partyingWith.matchEntire(text)?.groupValues?.get(1)?.let { roster ->
+            ensureParty(localPlayer)
+            roster.split(',').map(String::trim).forEach { segment ->
+                listedName.matchEntire(segment)?.groupValues?.get(1)?.let { addMember(it, notifyJoin = true) }
+            }
+            return
+        }
+
+        removed.firstNotNullOfOrNull { it.matchEntire(text)?.groupValues?.get(1) }?.let { name ->
+            removeMember(name, notifyLeave = true)
+            if (leader.equals(name, ignoreCase = true)) setLeader(null)
+            return
+        }
+
+        transferredBy.matchEntire(text)?.let { match ->
+            ensureParty(localPlayer)
+            addMember(match.groupValues[1], notifyJoin = false)
+            addMember(match.groupValues[2], notifyJoin = false)
+            setLeader(match.groupValues[1])
+            return
+        }
+
+        transferredAfterLeave.matchEntire(text)?.let { match ->
+            ensureParty(localPlayer)
+            addMember(match.groupValues[1], notifyJoin = false)
+            setLeader(match.groupValues[1])
+            removeMember(match.groupValues[2], notifyLeave = true)
+            return
+        }
+
+        leaderDisconnected.matchEntire(text)?.groupValues?.get(1)?.let { name ->
+            ensureParty(localPlayer)
+            addMember(name, notifyJoin = false)
+            setLeader(name)
+            return
+        }
+
+        leaderRejoined.matchEntire(text)?.groupValues?.get(1)?.let { name ->
+            ensureParty(localPlayer)
+            addMember(name, notifyJoin = false)
+            setLeader(name)
+            return
+        }
+
+        partyChat.matchEntire(text)?.groupValues?.get(1)?.let { name ->
+            ensureParty(localPlayer)
+            addMember(name, notifyJoin = false)
+            return
+        }
+
+        invitation.matchEntire(text)?.groupValues?.get(1)?.let { inviter ->
+            ensureParty(localPlayer)
+            addMember(inviter, notifyJoin = false)
+            if (leader == null) setLeader(inviter)
         }
     }
 
@@ -225,60 +200,77 @@ object PartyState {
 
     fun memberNames(): Set<String> = displayNames.values.toSet()
 
-    fun snapshot(): Snapshot {
-        val expected = expectedMemberCount
-        val names = displayNames.values.sortedWith(String.CASE_INSENSITIVE_ORDER)
-        return Snapshot(
-            inParty = inParty,
-            members = names,
-            listGeneration = partyListGeneration,
-            listComplete = inParty && expected != null && names.size >= expected,
-            fresh = inParty && System.currentTimeMillis() - maxOf(lastUpdatedAt, lastListUpdatedAt) < REFRESH_INTERVAL_MILLIS,
-        )
-    }
+    fun snapshot(): Snapshot = Snapshot(
+        inParty = inParty,
+        members = displayNames.values.sortedWith(String.CASE_INSENSITIVE_ORDER),
+        leader = leader?.let(displayNames::get),
+        revision = revision,
+        updatedAt = lastUpdatedAt,
+    )
 
     fun reset() {
+        clearParty(notify = false)
+    }
+
+    private fun ensureParty(localPlayer: String?) {
+        if (!inParty) {
+            inParty = true
+            revision++
+        }
+        addLocalPlayer(localPlayer)
+        markUpdated()
+    }
+
+    private fun addMember(name: String, notifyJoin: Boolean) {
+        val key = name.lowercase()
+        val added = members.add(key)
+        displayNames[key] = name
+        if (!added) return
+        revision++
+        markUpdated()
+        if (notifyJoin) emit(Event.MemberJoined(name))
+    }
+
+    private fun removeMember(name: String, notifyLeave: Boolean) {
+        val key = name.lowercase()
+        if (!members.remove(key)) return
+        val displayName = displayNames.remove(key) ?: name
+        revision++
+        markUpdated()
+        if (notifyLeave) emit(Event.MemberLeft(displayName))
+    }
+
+    private fun addLocalPlayer(localPlayer: String?) {
+        localPlayer?.takeIf(String::isNotBlank)?.let { addMember(it, notifyJoin = false) }
+    }
+
+    private fun setLeader(name: String?) {
+        val normalized = name?.lowercase()
+        if (leader == normalized) return
+        leader = normalized
+        revision++
+        markUpdated()
+        emit(Event.LeaderChanged(name))
+    }
+
+    private fun clearParty(notify: Boolean) {
+        val hadParty = inParty || members.isNotEmpty()
         members.clear()
         displayNames.clear()
         leader = null
         inParty = false
-        expectedMemberCount = null
-        lastUpdatedAt = 0L
-        lastListUpdatedAt = 0L
-        lastRefreshRequestAt = 0L
-        internalRefreshUntil = 0L
-        partyListGeneration++
+        lastUpdatedAt = System.currentTimeMillis()
+        revision++
+        if (notify && hadParty) emit(Event.Disbanded)
     }
-
-    private fun addMember(name: String) {
-        val key = name.lowercase()
-        members.add(key)
-        displayNames[key] = name
-    }
-
-    private fun addKnownMember(name: String) {
-        val wasKnown = members.contains(name.lowercase())
-        addMember(name)
-        if (!wasKnown) expectedMemberCount = expectedMemberCount?.plus(1)
-        if (!wasKnown) partyListGeneration++
-    }
-
-    private fun removeKnownMember(name: String) {
-        val key = name.lowercase()
-        if (members.remove(key)) {
-            displayNames.remove(key)
-            expectedMemberCount = expectedMemberCount?.minus(1)?.coerceAtLeast(0)
-            partyListGeneration++
-        }
-    }
-
-    private fun addLocalPlayer(localPlayer: String?) {
-        localPlayer?.let(::addMember)
-    }
-
-    private fun localName(): String? = Minecraft.getInstance().user.name.takeIf { it.isNotBlank() }
 
     private fun markUpdated() {
         lastUpdatedAt = System.currentTimeMillis()
     }
+
+    private fun emit(event: Event) {
+        listeners.forEach { listener -> runCatching { listener(event) } }
+    }
+
+    private fun localName(): String? = Minecraft.getInstance().user.name.takeIf(String::isNotBlank)
 }

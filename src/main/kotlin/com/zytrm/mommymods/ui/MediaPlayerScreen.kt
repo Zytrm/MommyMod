@@ -1,5 +1,6 @@
 package com.zytrm.mommymods.ui
 
+import com.zytrm.mommymods.config.ModConfig
 import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.media.MediaInfo
 import net.minecraft.client.gui.GuiGraphicsExtractor
@@ -9,6 +10,7 @@ import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
+import kotlin.math.roundToInt
 
 class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal("MommyMods Aura Player")) {
     private lateinit var input: EditBox
@@ -19,7 +21,7 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
         super.init()
         panelX = (width - PANEL_WIDTH) / 2
         panelY = (height - PANEL_HEIGHT) / 2
-        input = EditBox(font, panelX + 12, panelY + 35, PANEL_WIDTH - 24, 18, Component.literal("Media URL or search"))
+        input = EditBox(font, panelX + 12, panelY + 35, PANEL_WIDTH - 78, 18, Component.literal("Media URL or search"))
         input.setMaxLength(512)
         input.setHint(Component.literal("YouTube, SoundCloud, URL, file, or search"))
         input.isFocused = true
@@ -37,6 +39,17 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
         graphics.fill(panelX + 2, panelY + 2, panelX + PANEL_WIDTH - 2, panelY + 25, 0xF01A151C.toInt())
         graphics.centeredText(font, "AURA PLAYER", panelX + PANEL_WIDTH / 2, panelY + 9, 0xFFFFE8F0.toInt())
 
+        val goHovered = mouseX in (panelX + PANEL_WIDTH - 58) until (panelX + PANEL_WIDTH - 12) &&
+            mouseY in (panelY + 35) until (panelY + 53)
+        graphics.fill(
+            panelX + PANEL_WIDTH - 58,
+            panelY + 35,
+            panelX + PANEL_WIDTH - 12,
+            panelY + 53,
+            if (goHovered) UiStyle.accentBright else UiStyle.accentMuted,
+        )
+        graphics.centeredText(font, "PLAY", panelX + PANEL_WIDTH - 35, panelY + 40, 0xFFFFE8F0.toInt())
+
         val info = MediaPlayer.currentInfo()
         val track = info?.let { fit(it.title, PANEL_WIDTH - 24) } ?: MediaPlayer.status
         graphics.centeredText(font, track, panelX + PANEL_WIDTH / 2, panelY + 61, 0xFFCDB2BE.toInt())
@@ -48,6 +61,8 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
         graphics.fill(panelX + 12, panelY + 76, panelX + 12 + ((PANEL_WIDTH - 24) * progress).toInt(), panelY + 79, UiStyle.accent)
         val time = "${MediaInfo.formatTime(position)} / ${MediaInfo.formatTime(duration)}"
         graphics.text(font, time, panelX + 12, panelY + 83, 0xFF9E8792.toInt(), false)
+        val volume = "${(ModConfig.values.mediaVolume * 100).roundToInt()}%"
+        graphics.centeredText(font, volume, panelX + PANEL_WIDTH / 2, panelY + 83, 0xFF9E8792.toInt())
         val queued = MediaPlayer.queueSize()
         if (queued > 0) {
             val queueText = "+$queued queued"
@@ -65,6 +80,13 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
 
     override fun mouseClicked(event: MouseButtonEvent, isDoubleClick: Boolean): Boolean {
         if (event.button() == 0) {
+            if (event.x.toInt() in (panelX + PANEL_WIDTH - 58) until (panelX + PANEL_WIDTH - 12) &&
+                event.y.toInt() in (panelY + 35) until (panelY + 53)
+            ) {
+                UiStyle.playClick()
+                playInput()
+                return true
+            }
             if (event.x.toInt() in (panelX + 12)..(panelX + PANEL_WIDTH - 12) &&
                 event.y.toInt() in (panelY + 73)..(panelY + 82)
             ) {
@@ -85,6 +107,19 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
         return super.mouseClicked(event, isDoubleClick)
     }
 
+    override fun mouseScrolled(mouseX: Double, mouseY: Double, horizontal: Double, vertical: Double): Boolean {
+        if (vertical != 0.0 && mouseX.toInt() in panelX until (panelX + PANEL_WIDTH) &&
+            mouseY.toInt() in panelY until (panelY + PANEL_HEIGHT)
+        ) {
+            val direction = if (vertical > 0.0) 1 else -1
+            val current = ModConfig.values.mediaVolume
+            MediaPlayer.setVolume((((current + direction * 0.05f) * 20f).roundToInt() / 20f).coerceIn(0f, 1f))
+            UiStyle.playClick(1.15f)
+            return true
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontal, vertical)
+    }
+
     override fun keyPressed(event: KeyEvent): Boolean {
         if (event.key == GLFW.GLFW_KEY_ENTER || event.key == GLFW.GLFW_KEY_KP_ENTER) {
             playInput()
@@ -103,16 +138,16 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun controls(): List<Control> {
         val gap = 5
-        val widths = listOf(54, 42, 54, 42, 44)
+        val widths = listOf(38, 70, 38, 46)
         val total = widths.sum() + gap * (widths.size - 1)
         var x = panelX + (PANEL_WIDTH - total) / 2
         val y = panelY + 101
-        val labels = listOf("PLAY", "<", if (MediaPlayer.isPaused()) "RESUME" else "PAUSE", ">", "STOP")
-        val actions = listOf<() -> Unit>(::playInput, MediaPlayer::previous, MediaPlayer::togglePause, MediaPlayer::next, MediaPlayer::stop)
+        val labels = listOf("<", if (MediaPlayer.isPaused()) "RESUME" else "PAUSE", ">", "STOP")
+        val actions = listOf<() -> Unit>(MediaPlayer::previous, MediaPlayer::togglePause, MediaPlayer::next, MediaPlayer::stop)
         val playback = widths.indices.map { index ->
             Control(x, y, widths[index], labels[index], actions[index]).also { x += widths[index] + gap }
         }
-        val secondaryWidth = 118
+        val secondaryWidth = 105
         val secondaryGap = 8
         val secondaryX = panelX + (PANEL_WIDTH - secondaryWidth * 2 - secondaryGap) / 2
         val repeat = MediaPlayer.repeatMode().name
@@ -149,7 +184,7 @@ class MediaPlayerScreen(private val parent: Screen?) : Screen(Component.literal(
     private data class Control(val x: Int, val y: Int, val width: Int, val label: String, val action: () -> Unit)
 
     companion object {
-        private const val PANEL_WIDTH = 310
-        private const val PANEL_HEIGHT = 155
+        private const val PANEL_WIDTH = 286
+        private const val PANEL_HEIGHT = 147
     }
 }

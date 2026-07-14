@@ -17,14 +17,14 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 object FishingPartyHelper {
     private const val SCAN_TICKS = 160L
-    private const val HUD_REFRESH_TICKS = 100L
-    private const val HUD_STALE_MILLIS = 60 * 1000L
+    private const val PERIODIC_REFRESH_TICKS = 600L
+    private const val READINESS_STALE_MILLIS = 3 * 60 * 1000L
     private val validPlayerName = Regex("^[A-Za-z0-9_]{1,16}$")
-    private val joinedParty = Regex("^(?:\\[[^]]+] )?(\\w{1,16}) joined the party\\.$")
     private val pendingApi = ConcurrentHashMap.newKeySet<String>()
     private val pendingScans = ConcurrentHashMap<String, PendingScan>()
     private val readinessCache = ConcurrentHashMap<String, CachedReadiness>()
     private var clientTick = 0L
+    private var initialized = false
 
     data class HudStatus(
         val name: String,
@@ -46,27 +46,29 @@ object FishingPartyHelper {
         val lootingVWeapons: MutableSet<String> = linkedSetOf(),
     )
 
-    fun onMessage(message: String) {
-        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel()) return
-        val name = joinedParty.matchEntire(message)?.groupValues?.get(1) ?: return
-        if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true)) return
-
-        inspectProfile(name, announce = true)
+    fun initialize() {
+        if (initialized) return
+        initialized = true
+        PartyState.addListener(::onPartyEvent)
     }
 
     fun onTick(minecraft: Minecraft) {
         clientTick++
-        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel()) {
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel() || !GameContext.isFishingIsland()) {
             pendingScans.clear()
             return
         }
 
-        if (ModConfig.values.partyReadinessHud && clientTick % HUD_REFRESH_TICKS == 0L) {
+        if (clientTick % PERIODIC_REFRESH_TICKS == 0L) {
             refreshPartyReadiness()
         }
 
         val level = minecraft.level ?: return
         pendingScans.entries.toList().forEach { (key, scan) ->
+            if (!PartyState.isMember(scan.name)) {
+                pendingScans.remove(key)
+                return@forEach
+            }
             findPlayer(level, scan.name)?.let { observe(minecraft, level, it, scan) }
             if (clientTick - scan.startedAt >= SCAN_TICKS) {
                 pendingScans.remove(key)
@@ -84,6 +86,7 @@ object FishingPartyHelper {
         HypixelProfileClient.inspect(name, bypassCache = force).whenComplete { readiness, throwable ->
             pendingApi.remove(key)
             Minecraft.getInstance().execute {
+                if (!GameContext.isFishingIsland() || !PartyState.isMember(name)) return@execute
                 if (throwable != null) {
                     if (announce) startInGameScan(name)
                 } else {
@@ -99,18 +102,20 @@ object FishingPartyHelper {
     }
 
     fun refreshPartyReadiness(force: Boolean = false) {
-        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel() || !PartyState.isInParty()) return
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isOnHypixel() ||
+            !GameContext.isFishingIsland() || !PartyState.isInParty()
+        ) return
         val now = System.currentTimeMillis()
         PartyState.memberNames().forEach { name ->
             val cached = readinessCache[name.lowercase()]
-            if (force || cached == null || now - cached.updatedAt >= HUD_STALE_MILLIS) {
+            if (force || cached == null || now - cached.updatedAt >= READINESS_STALE_MILLIS) {
                 inspectProfile(name, announce = false, force = force)
             }
         }
     }
 
     fun hudStatuses(): List<HudStatus> {
-        if (!ModConfig.values.fishingPartyHelper || !PartyState.isInParty()) return emptyList()
+        if (!ModConfig.values.fishingPartyHelper || !GameContext.isFishingIsland() || !PartyState.isInParty()) return emptyList()
         val minecraft = Minecraft.getInstance()
         val localName = minecraft.user.name
         val localInventory = LootingVScanner.localInventory(minecraft)
@@ -134,6 +139,46 @@ object FishingPartyHelper {
         pendingScans.clear()
         readinessCache.clear()
         clientTick = 0L
+    }
+
+    private fun onPartyEvent(event: PartyState.Event) {
+        when (event) {
+            is PartyState.Event.MemberJoined -> {
+                val minecraft = Minecraft.getInstance()
+                if (shouldInspectJoin(
+                        event.name,
+                        minecraft.user.name,
+                        ModConfig.values.fishingPartyHelper,
+                        GameContext.isOnHypixel(),
+                        GameContext.isFishingIsland(),
+                    )
+                ) {
+                    inspectProfile(event.name, announce = true, force = true)
+                }
+            }
+            is PartyState.Event.MemberLeft -> clearMember(event.name)
+            is PartyState.Event.Disbanded -> {
+                pendingApi.clear()
+                pendingScans.clear()
+                readinessCache.clear()
+            }
+            is PartyState.Event.LeaderChanged -> Unit
+        }
+    }
+
+    internal fun shouldInspectJoin(
+        name: String,
+        localName: String,
+        enabled: Boolean,
+        onHypixel: Boolean,
+        fishingIsland: Boolean,
+    ): Boolean = enabled && onHypixel && fishingIsland && !name.equals(localName, ignoreCase = true)
+
+    private fun clearMember(name: String) {
+        val key = name.lowercase()
+        pendingApi.remove(key)
+        pendingScans.remove(key)
+        readinessCache.remove(key)
     }
 
     fun debugInspect(name: String) {
@@ -172,7 +217,8 @@ object FishingPartyHelper {
     fun debugStatus() {
         Chat.info(
             "Party helper status: enabled=${ModConfig.values.fishingPartyHelper}, " +
-                "hypixel=${GameContext.isOnHypixel()}, pendingProfiles=${pendingApi.size}, " +
+                "hypixel=${GameContext.isOnHypixel()}, area=${GameContext.currentArea() ?: "unknown"}, " +
+                "fishingIsland=${GameContext.isFishingIsland()}, pendingProfiles=${pendingApi.size}, " +
                 "pendingGearScans=${pendingScans.size}, hudProfiles=${readinessCache.size}, ${HypixelProfileClient.statusSummary()}.",
         )
     }

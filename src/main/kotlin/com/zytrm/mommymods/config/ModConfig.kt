@@ -22,10 +22,6 @@ internal fun applyMissingSettingDefaults(values: MommySettings, existingKeys: Se
     if ("jawbusFinisherPartyMessage" !in existingKeys) values.jawbusFinisherPartyMessage = true
     if ("jawbusFinisherMessage" !in existingKeys) values.jawbusFinisherMessage = DEFAULT_FINISHER_MESSAGE
     if ("lastJawbusHookedAt" !in existingKeys) values.lastJawbusHookedAt = 0L
-    if ("rareDropScreenshots" !in existingKeys) values.rareDropScreenshots = true
-    if ("screenshotRngDrops" !in existingKeys) values.screenshotRngDrops = true
-    if ("screenshotDyesAndVials" !in existingKeys) values.screenshotDyesAndVials = true
-    if ("screenshotRareRewards" !in existingKeys) values.screenshotRareRewards = true
 }
 
 data class PartyCommandSetting(
@@ -52,10 +48,6 @@ data class MommySettings(
     var jawbusFinisherPartyMessage: Boolean = true,
     var jawbusFinisherMessage: String = DEFAULT_FINISHER_MESSAGE,
     var lastJawbusHookedAt: Long = 0L,
-    var rareDropScreenshots: Boolean = true,
-    var screenshotRngDrops: Boolean = true,
-    var screenshotDyesAndVials: Boolean = true,
-    var screenshotRareRewards: Boolean = true,
     var mediaPlayer: Boolean = true,
     var mediaVolume: Float = 0.8f,
     var mediaHud: Boolean = true,

@@ -13,6 +13,7 @@ import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
+import kotlin.math.round
 import kotlin.math.roundToInt
 
 class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal("MommyMods")) {
@@ -26,7 +27,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         MM_PARTY("MM Party", true),
         JAWBUS_FINISHER("Jawbus Finisher", true),
         JAWBUS_FINDER("Jawbus Finder", true),
-        RARE_SCREENSHOTS("Rare Screenshots", true),
         MEDIA_PLAYER("Aura Player", true),
         PARTY_COMMANDS("Party Commands", true),
         CLICK_GUI("ClickGUI", true);
@@ -38,7 +38,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             MM_PARTY -> ModConfig.values.fishingPartyHelper && ModConfig.values.partyReadinessHud
             JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled
             JAWBUS_FINDER -> ModConfig.values.jawbusFinder
-            RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots
             MEDIA_PLAYER -> ModConfig.values.mediaPlayer
             PARTY_COMMANDS -> ModConfig.values.partyCommandsEnabled
             CLICK_GUI -> true
@@ -55,7 +54,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 }
                 JAWBUS_FINISHER -> ModConfig.values.jawbusFinisherEnabled = value
                 JAWBUS_FINDER -> ModConfig.values.jawbusFinder = value
-                RARE_SCREENSHOTS -> ModConfig.values.rareDropScreenshots = value
                 MEDIA_PLAYER -> {
                     ModConfig.values.mediaPlayer = value
                     MediaPlayer.onEnabledChanged(value)
@@ -82,7 +80,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 FeatureEntry.JAWBUS_FINDER,
             ),
         ),
-        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER, FeatureEntry.PARTY_COMMANDS, FeatureEntry.RARE_SCREENSHOTS)),
+        FeatureCategory("MISC", listOf(FeatureEntry.MEDIA_PLAYER, FeatureEntry.PARTY_COMMANDS)),
         FeatureCategory("DEV", listOf(FeatureEntry.CLICK_GUI)),
     )
 
@@ -201,7 +199,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             FeatureEntry.MM_PARTY -> drawMmPartyWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINISHER -> drawJawbusFinisherWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.JAWBUS_FINDER -> drawJawbusWindow(graphics, windowWidth, mouseX, mouseY)
-            FeatureEntry.RARE_SCREENSHOTS -> drawRareScreenshotsWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.MEDIA_PLAYER -> drawMediaPlayerWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.PARTY_COMMANDS -> drawPartyCommandsWindow(graphics, windowWidth, mouseX, mouseY)
             FeatureEntry.CLICK_GUI -> drawClickGuiWindow(graphics, windowWidth, mouseX, mouseY)
@@ -229,7 +226,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     private fun drawMmPartyWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
         drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", FeatureEntry.MM_PARTY.enabled(), true, mouseX, mouseY)
-        drawActionSetting(graphics, windowY + 52, windowWidth, "Party Data", "REFRESH", mouseX, mouseY)
+        drawActionSetting(graphics, windowY + 52, windowWidth, "Readiness", "REFRESH", mouseX, mouseY)
     }
 
     private fun drawJawbusFinisherWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -242,14 +239,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         finisherMessageBox.setY(windowY + 98)
         finisherMessageBox.setWidth(windowWidth - 84)
         drawActionSetting(graphics, windowY + 118, windowWidth, "Finisher Alert", "PREVIEW", mouseX, mouseY)
-    }
-
-    private fun drawRareScreenshotsWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
-        val enabled = ModConfig.values.rareDropScreenshots
-        drawToggleSetting(graphics, windowY + 30, windowWidth, "Enabled", enabled, true, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 52, windowWidth, "RNG Drops", ModConfig.values.screenshotRngDrops, enabled, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 74, windowWidth, "Dyes & Vials", ModConfig.values.screenshotDyesAndVials, enabled, mouseX, mouseY)
-        drawToggleSetting(graphics, windowY + 96, windowWidth, "Rare Rewards", ModConfig.values.screenshotRareRewards, enabled, mouseX, mouseY)
     }
 
     private fun drawJawbusWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -281,7 +270,13 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             1f,
             "${(ModConfig.values.mediaVolume * 100).roundToInt()}%",
         )
-        drawActionSetting(graphics, windowY + 118, windowWidth, "Player", "OPEN", mouseX, mouseY)
+        val playback = when {
+            MediaPlayer.currentInfo() == null -> "OPEN"
+            MediaPlayer.isPaused() -> "RESUME"
+            else -> "PAUSE"
+        }
+        drawActionSetting(graphics, windowY + 118, windowWidth, "Now Playing", playback, mouseX, mouseY)
+        drawActionSetting(graphics, windowY + 140, windowWidth, "Full Player", "OPEN", mouseX, mouseY)
     }
 
     private fun drawPartyCommandsWindow(graphics: GuiGraphicsExtractor, windowWidth: Int, mouseX: Int, mouseY: Int) {
@@ -487,19 +482,6 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                 } else return false
                 else -> return false
             }
-            FeatureEntry.RARE_SCREENSHOTS -> when (mouseY) {
-                in (windowY + 30)..(windowY + 49) -> ModConfig.values.rareDropScreenshots = !ModConfig.values.rareDropScreenshots
-                in (windowY + 52)..(windowY + 71) -> if (ModConfig.values.rareDropScreenshots) {
-                    ModConfig.values.screenshotRngDrops = !ModConfig.values.screenshotRngDrops
-                } else return false
-                in (windowY + 74)..(windowY + 93) -> if (ModConfig.values.rareDropScreenshots) {
-                    ModConfig.values.screenshotDyesAndVials = !ModConfig.values.screenshotDyesAndVials
-                } else return false
-                in (windowY + 96)..(windowY + 115) -> if (ModConfig.values.rareDropScreenshots) {
-                    ModConfig.values.screenshotRareRewards = !ModConfig.values.screenshotRareRewards
-                } else return false
-                else -> return false
-            }
             FeatureEntry.MEDIA_PLAYER -> when (mouseY) {
                 in (windowY + 30)..(windowY + 49) -> {
                     ModConfig.values.mediaPlayer = !ModConfig.values.mediaPlayer
@@ -516,6 +498,9 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
                     updateSlider(mouseX)
                 } else return false
                 in (windowY + 118)..(windowY + 137) -> if (ModConfig.values.mediaPlayer) {
+                    if (MediaPlayer.currentInfo() == null) MediaPlayer.openScreen(this) else MediaPlayer.togglePause()
+                } else return false
+                in (windowY + 140)..(windowY + 159) -> if (ModConfig.values.mediaPlayer) {
                     MediaPlayer.openScreen(this)
                 } else return false
                 else -> return false
@@ -561,6 +546,20 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         return super.mouseDragged(event, deltaX, deltaY)
     }
 
+    override fun mouseScrolled(mouseX: Double, mouseY: Double, horizontal: Double, vertical: Double): Boolean {
+        val feature = openFeature ?: return super.mouseScrolled(mouseX, mouseY, horizontal, vertical)
+        val (windowWidth, windowHeight) = windowSize(feature)
+        if (mouseX.toInt() !in windowX until (windowX + windowWidth) ||
+            mouseY.toInt() !in windowY until (windowY + windowHeight)
+        ) return super.mouseScrolled(mouseX, mouseY, horizontal, vertical)
+
+        if (handleWindowScroll(feature, mouseX.toInt(), mouseY.toInt(), vertical)) {
+            UiStyle.playClick(1.15f)
+            ModConfig.save()
+        }
+        return true
+    }
+
     override fun mouseReleased(event: MouseButtonEvent): Boolean {
         if (draggingWindow || draggingSlider != null) {
             draggingWindow = false
@@ -599,14 +598,14 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         ModConfig.save()
     }
 
-    private fun cycleSound() {
+    private fun cycleSound(direction: Int = 1) {
         val choices = LouderCatch.choices
         val current = choices.indexOfFirst { it.label == ModConfig.values.catchSound }.coerceAtLeast(0)
-        ModConfig.values.catchSound = choices[(current + 1) % choices.size].label
+        ModConfig.values.catchSound = choices[(current + direction).mod(choices.size)].label
     }
 
     private fun cycleFinisherHealth() {
-        val choices = listOf(10, 15, 20, 25, 30)
+        val choices = (5..50 step 5).toList()
         val current = choices.indexOf(ModConfig.values.jawbusFinisherHealth).coerceAtLeast(0)
         ModConfig.values.jawbusFinisherHealth = choices[(current + 1) % choices.size]
     }
@@ -623,6 +622,37 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
             DraggingSlider.MEDIA_VOLUME -> MediaPlayer.setVolume((progress * 100).roundToInt() / 100f, save = false)
             null -> Unit
         }
+    }
+
+    private fun handleWindowScroll(feature: FeatureEntry, mouseX: Int, mouseY: Int, delta: Double): Boolean {
+        if (delta == 0.0) return false
+        val direction = if (delta > 0.0) 1 else -1
+        val inRow = { offset: Int ->
+            mouseX in (windowX + 10) until (windowX + windowSize(feature).first - 10) &&
+                mouseY in (windowY + offset) until (windowY + offset + 20)
+        }
+        when (feature) {
+            FeatureEntry.LOUDER_CATCH -> when {
+                inRow(52) -> cycleSound(direction)
+                inRow(74) -> ModConfig.values.catchVolume = stepValue(ModConfig.values.catchVolume, direction, 0.1f, 20f, 0.1f)
+                inRow(96) -> ModConfig.values.catchPitch = stepValue(ModConfig.values.catchPitch, direction, 0.5f, 2f, 0.05f)
+                else -> return false
+            }
+            FeatureEntry.JAWBUS_FINISHER -> if (inRow(52)) {
+                ModConfig.values.jawbusFinisherHealth =
+                    (ModConfig.values.jawbusFinisherHealth + direction * 5).coerceIn(5, 50)
+            } else return false
+            FeatureEntry.MEDIA_PLAYER -> if (inRow(96) && ModConfig.values.mediaPlayer) {
+                MediaPlayer.setVolume(stepValue(ModConfig.values.mediaVolume, direction, 0f, 1f, 0.05f), save = false)
+            } else return false
+            FeatureEntry.CLICK_GUI -> when {
+                inRow(52) -> UiStyle.cycleAccent(direction)
+                inRow(74) -> UiStyle.cycleSorting(direction)
+                else -> return false
+            }
+            else -> return false
+        }
+        return true
     }
 
     private fun featureAt(mouseX: Int, mouseY: Int): FeatureEntry? {
@@ -657,8 +687,7 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
         FeatureEntry.MM_PARTY -> 230 to 76
         FeatureEntry.JAWBUS_FINISHER -> 310 to 142
         FeatureEntry.JAWBUS_FINDER -> 230 to 76
-        FeatureEntry.RARE_SCREENSHOTS -> 230 to 120
-        FeatureEntry.MEDIA_PLAYER -> 230 to 142
+        FeatureEntry.MEDIA_PLAYER -> 230 to 164
         FeatureEntry.PARTY_COMMANDS -> 250 to (54 + PartyCommands.definitions.size * 44)
         FeatureEntry.CLICK_GUI -> 230 to 142
         FeatureEntry.HIDE_LINE -> 230 to 54
@@ -672,4 +701,11 @@ class MommyConfigScreen(private val parent: Screen?) : Screen(Component.literal(
 
     override fun isPauseScreen(): Boolean = false
     override fun isInGameUi(): Boolean = true
+
+    companion object {
+        internal fun stepValue(value: Float, direction: Int, min: Float, max: Float, step: Float): Float {
+            val stepped = round((value + direction.coerceIn(-1, 1) * step) / step) * step
+            return stepped.coerceIn(min, max)
+        }
+    }
 }
