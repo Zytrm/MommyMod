@@ -36,14 +36,14 @@ object UiStyle {
     val accentName: String
         get() = accents.firstOrNull { it.color == accent }?.name ?: "Custom"
 
-    fun cycleAccent() {
+    fun cycleAccent(direction: Int = 1) {
         val index = accents.indexOfFirst { it.color == accent }.coerceAtLeast(0)
-        ModConfig.values.clickGuiAccent = accents[(index + 1) % accents.size].color
+        ModConfig.values.clickGuiAccent = accents[(index + direction).mod(accents.size)].color
     }
 
-    fun cycleSorting() {
+    fun cycleSorting(direction: Int = 1) {
         val current = sortingOptions.indexOf(ModConfig.values.clickGuiSorting).coerceAtLeast(0)
-        ModConfig.values.clickGuiSorting = sortingOptions[(current + 1) % sortingOptions.size]
+        ModConfig.values.clickGuiSorting = sortingOptions[(current + direction).mod(sortingOptions.size)]
     }
 
     fun reset() {

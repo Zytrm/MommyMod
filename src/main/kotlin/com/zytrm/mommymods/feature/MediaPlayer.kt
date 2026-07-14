@@ -11,21 +11,26 @@ import com.zytrm.mommymods.ui.MediaPlayerScreen
 import com.zytrm.mommymods.ui.HudElement
 import com.zytrm.mommymods.ui.HudLayout
 import com.zytrm.mommymods.ui.UiStyle
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import java.awt.Desktop
 import java.net.URI
+import kotlin.math.roundToInt
 
 object MediaPlayer {
     @Volatile
     private var engine: MediaPlayerEngine? = null
+    private var hudControlsRegistered = false
 
     @Volatile
     var status: String = "Ready"
         private set
 
     fun initialize() {
+        registerHudControls()
         if (engine != null) return
         engine = runCatching {
             MediaPlayerEngine(
@@ -150,16 +155,57 @@ object MediaPlayer {
         val width = 196
         val height = 38
         val (x, y) = HudLayout.position(HudElement.MEDIA, width, height, graphics.guiWidth(), graphics.guiHeight())
-        val title = fit(info.title, 172, minecraft)
+        val title = fit(info.title, 146, minecraft)
         val state = if (isPaused()) "Paused" else "${MediaInfo.formatTime(positionMs())} / ${MediaInfo.formatTime(durationMs())}"
         val progress = if (durationMs() > 0L) (positionMs().toDouble() / durationMs()).coerceIn(0.0, 1.0) else 0.0
 
         graphics.fill(x, y, x + width, y + height, 0xD9100C12.toInt())
         graphics.fill(x, y, x + 2, y + height, UiStyle.accent)
         graphics.text(minecraft.font, title, x + 9, y + 7, 0xFFFFE8F0.toInt(), false)
-        graphics.text(minecraft.font, state, x + 9, y + 21, 0xFFCDB2BE.toInt(), false)
+        graphics.text(minecraft.font, "$state  ${(ModConfig.values.mediaVolume * 100).roundToInt()}%", x + 9, y + 21, 0xFFCDB2BE.toInt(), false)
+        graphics.fill(x + width - 25, y + 6, x + width - 8, y + 23, UiStyle.accentMuted)
+        graphics.centeredText(minecraft.font, if (isPaused()) ">" else "||", x + width - 16, y + 11, 0xFFFFE8F0.toInt())
         graphics.fill(x + 9, y + 33, x + width - 9, y + 35, 0xFF44353C.toInt())
         graphics.fill(x + 9, y + 33, x + 9 + ((width - 18) * progress).toInt(), y + 35, UiStyle.accent)
+    }
+
+    private fun registerHudControls() {
+        if (hudControlsRegistered) return
+        hudControlsRegistered = true
+        ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
+            ScreenMouseEvents.allowMouseClick(screen).register { _, event -> !handleHudClick(event.x, event.y, event.button()) }
+            ScreenMouseEvents.allowMouseScroll(screen).register { _, mouseX, mouseY, _, vertical ->
+                !handleHudScroll(mouseX, mouseY, vertical)
+            }
+        }
+    }
+
+    private fun handleHudClick(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (button != 0 || !ModConfig.values.mediaPlayer || !ModConfig.values.mediaHud || currentInfo() == null) return false
+        val minecraft = Minecraft.getInstance()
+        val width = 196
+        val height = 38
+        val (x, y) = HudLayout.position(HudElement.MEDIA, width, height, minecraft.window.guiScaledWidth, minecraft.window.guiScaledHeight)
+        if (mouseX.toInt() !in (x + width - 25) until (x + width - 8) || mouseY.toInt() !in (y + 6) until (y + 23)) {
+            return false
+        }
+        togglePause()
+        UiStyle.playClick()
+        return true
+    }
+
+    private fun handleHudScroll(mouseX: Double, mouseY: Double, vertical: Double): Boolean {
+        if (vertical == 0.0 || !ModConfig.values.mediaPlayer || !ModConfig.values.mediaHud || currentInfo() == null) return false
+        val minecraft = Minecraft.getInstance()
+        val width = 196
+        val height = 38
+        val (x, y) = HudLayout.position(HudElement.MEDIA, width, height, minecraft.window.guiScaledWidth, minecraft.window.guiScaledHeight)
+        if (mouseX.toInt() !in x until (x + width) || mouseY.toInt() !in y until (y + height)) return false
+        val direction = if (vertical > 0.0) 1 else -1
+        val volume = ((ModConfig.values.mediaVolume + direction * 0.05f) * 20f).roundToInt() / 20f
+        setVolume(volume.coerceIn(0f, 1f))
+        UiStyle.playClick(1.15f)
+        return true
     }
 
     private fun fit(value: String, maxWidth: Int, minecraft: Minecraft): String {

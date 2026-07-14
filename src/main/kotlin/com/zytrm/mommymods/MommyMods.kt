@@ -12,7 +12,6 @@ import com.zytrm.mommymods.feature.LouderCatch
 import com.zytrm.mommymods.feature.MediaPlayer
 import com.zytrm.mommymods.feature.PartyState
 import com.zytrm.mommymods.feature.PartyCommands
-import com.zytrm.mommymods.feature.RareDropScreenshot
 import com.zytrm.mommymods.ui.MommyConfigScreen
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -37,27 +36,15 @@ object MommyMods : ClientModInitializer {
     override fun onInitializeClient() {
         ModConfig.load()
         PartyCommands.ensureSettings()
+        FishingPartyHelper.initialize()
         MediaPlayer.initialize()
-
-        ClientReceiveMessageEvents.ALLOW_GAME.register { component, overlay ->
-            val internalRefresh = PartyCommands.shouldHideInternalPartyRefresh(component.string) ||
-                PartyState.shouldHideInternalRefresh(component.string)
-            if (overlay || !internalRefresh) {
-                true
-            } else {
-                PartyState.onMessage(component.string)
-                false
-            }
-        }
 
         ClientReceiveMessageEvents.GAME.register { component, overlay ->
             if (!overlay) {
                 val message = component.string
                 PartyState.onMessage(message)
-                FishingPartyHelper.onMessage(message)
                 JawbusFinder.onMessage(message)
                 JawbusFinisherHelper.onMessage(message)
-                RareDropScreenshot.onMessage(message)
             }
         }
 
@@ -192,10 +179,8 @@ object MommyMods : ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register { minecraft ->
             LouderCatch.onTick(minecraft)
-            PartyState.onTick(minecraft)
             FishingPartyHelper.onTick(minecraft)
             JawbusFinisherHelper.onTick(minecraft)
-            RareDropScreenshot.onTick(minecraft)
             PartyCommands.onTick()
             if (openMenuNextTick) {
                 openMenuNextTick = false
@@ -211,7 +196,6 @@ object MommyMods : ClientModInitializer {
             FishingPartyHelper.reset()
             JawbusFinder.reset()
             JawbusFinisherHelper.reset()
-            RareDropScreenshot.reset()
         }
 
         ClientLifecycleEvents.CLIENT_STOPPING.register {

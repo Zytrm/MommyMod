@@ -20,10 +20,6 @@ class ModConfigTest {
             jawbusFinisherHealth = 0,
             jawbusFinisherPartyMessage = false,
             jawbusFinisherMessage = "",
-            rareDropScreenshots = false,
-            screenshotRngDrops = false,
-            screenshotDyesAndVials = false,
-            screenshotRareRewards = false,
         )
 
         applyMissingSettingDefaults(values, setOf("hideFishingLine", "louderCatch"))
@@ -31,10 +27,6 @@ class ModConfigTest {
         assertTrue(values.partyReadinessHud)
         assertTrue(values.jawbusFinisherEnabled)
         assertTrue(values.jawbusFinisherPartyMessage)
-        assertTrue(values.rareDropScreenshots)
-        assertTrue(values.screenshotRngDrops)
-        assertTrue(values.screenshotDyesAndVials)
-        assertTrue(values.screenshotRareRewards)
         assertTrue(values.jawbusFinisherHealth == 20)
         assertTrue(values.jawbusFinisherMessage == DEFAULT_FINISHER_MESSAGE)
     }

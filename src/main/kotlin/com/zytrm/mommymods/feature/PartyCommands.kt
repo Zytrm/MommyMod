@@ -93,9 +93,6 @@ object PartyCommands {
         LootingVPartyCheck.onTick()
     }
 
-    fun shouldHideInternalPartyRefresh(message: String): Boolean =
-        LootingVPartyCheck.isAwaitingPartyRefresh() && PartyState.isPartyListResponse(message)
-
     fun reset() {
         LootingVPartyCheck.reset()
     }
@@ -148,18 +145,12 @@ object JawbusTimePartyCommand {
 }
 
 object LootingVPartyCheck {
-    private const val PARTY_LIST_TIMEOUT_MILLIS = 3_500L
     private const val LOOKUP_TIMEOUT_MILLIS = 18_000L
     private const val MAX_PARTY_MESSAGE_LENGTH = 252
     private const val PARTY_LINE_INTERVAL_MILLIS = 550L
     private const val MESSAGE_HEADER = "[MM] Who has Looting V:"
 
     internal data class Result(val name: String, val weapons: List<String>?)
-
-    private enum class Phase {
-        REFRESHING_PARTY,
-        CHECKING_MEMBERS,
-    }
 
     private data class PendingResult(
         val name: String,
@@ -169,13 +160,9 @@ object LootingVPartyCheck {
     private data class ActiveCheck(
         val token: Long,
         val localResult: Result,
-        val startingListGeneration: Long,
-        val baselineMembers: List<String>,
-        val baselineInParty: Boolean,
-        var phase: Phase,
+        val startingRevision: Long,
+        val sendToParty: Boolean,
         var deadline: Long,
-        var sendToParty: Boolean = false,
-        var fallbackNote: String? = null,
         var pendingResults: List<PendingResult> = emptyList(),
     )
 
@@ -203,41 +190,18 @@ object LootingVPartyCheck {
         val check = ActiveCheck(
             token = ++nextToken,
             localResult = localResult,
-            startingListGeneration = snapshot.listGeneration,
-            baselineMembers = snapshot.members,
-            baselineInParty = snapshot.inParty,
-            phase = Phase.REFRESHING_PARTY,
-            deadline = System.currentTimeMillis() + PARTY_LIST_TIMEOUT_MILLIS,
+            startingRevision = snapshot.revision,
+            sendToParty = snapshot.inParty,
+            deadline = System.currentTimeMillis() + LOOKUP_TIMEOUT_MILLIS,
         )
 
         activeCheck = check
-        if (canUseCachedParty(snapshot)) {
-            beginMemberChecks(check, snapshot.members, sendToParty = true)
-            return
-        }
-
-        if (minecraft.connection == null) {
-            finishLocal(check, "not connected")
-            return
-        }
-        if (!PartyState.requestRefresh(minecraft, force = true)) {
-            beginMemberChecks(
-                check,
-                snapshot.members,
-                sendToParty = snapshot.inParty,
-                fallbackNote = "party refresh unavailable",
-            )
-        }
+        beginMemberChecks(check, snapshot.members)
     }
 
     fun onTick() {
         val now = System.currentTimeMillis()
-        activeCheck?.let { check ->
-            when (check.phase) {
-                Phase.REFRESHING_PARTY -> tickPartyRefresh(check, now)
-                Phase.CHECKING_MEMBERS -> if (now >= check.deadline) finishMemberChecks(check.token)
-            }
-        }
+        activeCheck?.takeIf { now >= it.deadline }?.let { finishMemberChecks(it.token) }
         tickPartyOutput(now)
     }
 
@@ -247,45 +211,9 @@ object LootingVPartyCheck {
         nextToken++
     }
 
-    fun isAwaitingPartyRefresh(): Boolean = activeCheck?.phase == Phase.REFRESHING_PARTY
-
-    internal fun canUseCachedParty(snapshot: PartyState.Snapshot): Boolean =
-        snapshot.inParty && snapshot.listComplete && snapshot.fresh && snapshot.members.isNotEmpty()
-
-    private fun tickPartyRefresh(check: ActiveCheck, now: Long) {
-        if (activeCheck?.token != check.token) return
-        val snapshot = PartyState.snapshot()
-        if (snapshot.listGeneration > check.startingListGeneration) {
-            if (!snapshot.inParty) {
-                finishLocal(check, "not in a party")
-                return
-            }
-            if (snapshot.listComplete) {
-                beginMemberChecks(check, snapshot.members, sendToParty = true)
-                return
-            }
-        }
-        if (now < check.deadline) return
-
-        val hasCurrentParty = snapshot.inParty
-        val members = when {
-            snapshot.members.isNotEmpty() -> snapshot.members
-            check.baselineMembers.isNotEmpty() -> check.baselineMembers
-            else -> emptyList()
-        }
-        beginMemberChecks(
-            check,
-            members,
-            sendToParty = hasCurrentParty || check.baselineInParty,
-            fallbackNote = if (hasCurrentParty || check.baselineInParty) null else "party refresh failed",
-        )
-    }
-
     private fun beginMemberChecks(
         check: ActiveCheck,
         members: List<String>,
-        sendToParty: Boolean,
-        fallbackNote: String? = null,
     ) {
         if (activeCheck?.token != check.token) return
         val minecraft = Minecraft.getInstance()
@@ -297,10 +225,7 @@ object LootingVPartyCheck {
             compareBy<String> { !it.equals(localName, ignoreCase = true) }.thenBy { it.lowercase() },
         )
 
-        check.phase = Phase.CHECKING_MEMBERS
         check.deadline = System.currentTimeMillis() + LOOKUP_TIMEOUT_MILLIS
-        check.sendToParty = sendToParty
-        check.fallbackNote = fallbackNote
         check.pendingResults = ordered.map { name ->
             val future = if (name.equals(localName, ignoreCase = true)) {
                 CompletableFuture.completedFuture(check.localResult)
@@ -325,24 +250,22 @@ object LootingVPartyCheck {
             pending.future.getNow(Result(pending.name, null))
         }.ifEmpty { listOf(check.localResult) }
 
-        val checkedNames = results.map { it.name.lowercase() }.toSet()
-        val currentNames = PartyState.memberNames().map { it.lowercase() }.toSet()
-        val partyChanged = check.sendToParty && PartyState.isInParty() &&
-            currentNames.isNotEmpty() && currentNames != checkedNames
+        val current = PartyState.snapshot()
+        val partyChanged = check.sendToParty && (!current.inParty || current.revision != check.startingRevision)
         if (check.sendToParty && PartyState.isInParty() && !partyChanged) {
-            sendPartyResult(results, check)
+            sendPartyResult(results)
         } else {
             showLocalResult(
                 results,
-                check.fallbackNote ?: if (partyChanged) "party changed" else "local result",
+                if (partyChanged) "party changed" else "local result",
             )
         }
     }
 
-    private fun sendPartyResult(results: List<Result>, check: ActiveCheck) {
+    private fun sendPartyResult(results: List<Result>) {
         val connection = Minecraft.getInstance().connection
         if (connection == null) {
-            showLocalResult(results, check.fallbackNote ?: "not connected")
+            showLocalResult(results, "not connected")
             return
         }
         pendingPartyOutput = PendingPartyOutput(
@@ -382,12 +305,6 @@ object LootingVPartyCheck {
                 MommyMods.logger.warn("Could not send the Looting V party result", it)
                 showLocalResult(output.results, "party send failed")
             }
-    }
-
-    private fun finishLocal(check: ActiveCheck, note: String) {
-        if (activeCheck?.token != check.token) return
-        activeCheck = null
-        showLocalResult(listOf(check.localResult), note)
     }
 
     private fun showLocalResult(results: List<Result>, note: String) {
